@@ -1,3 +1,6 @@
+# Override global gitignore for src directory
+!src/
+
 # Logs
 
 logs
