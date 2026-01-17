@@ -35,7 +35,7 @@ export default {
           message: 'わっちは元気じゃぞ!',
         }),
         {
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
         }
       );
     }
