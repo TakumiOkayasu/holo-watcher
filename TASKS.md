@@ -697,8 +697,6 @@ bun run cf-typegen
 bun run deploy
 ```
 
-```
-
 ---
 
 ## タスク10: ローカルテスト準備
