@@ -1,92 +1,59 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { saveNotification, getRecentNotifications, isDuplicate } from '../src/history';
-import type { NotificationInfo } from '../src/types';
+import { describe, it, expect, vi } from 'vitest';
+import { loadHistory, saveHistory } from '../src/history';
 
 describe('History (KV)', () => {
-  const createNotificationInfo = (result: 'success' | 'failure'): NotificationInfo => ({
-    result,
-    workflowName: 'CI',
-    repositoryName: 'owner/repo',
-    repositoryUrl: 'https://github.com/owner/repo',
-    branch: 'main',
-    commitSha: 'abc123def456',
-    runUrl: 'https://github.com/owner/repo/actions/runs/123',
-    runNumber: 42,
-    sender: 'developer',
-  });
-
   const createMockKV = () => ({
     get: vi.fn(),
     put: vi.fn(),
-    list: vi.fn(),
   });
 
-  describe('saveNotification', () => {
-    it('should save notification to KV with TTL', async () => {
-      const kv = createMockKV();
-      const info = createNotificationInfo('success');
-
-      await saveNotification(kv as unknown as KVNamespace, info);
-
-      expect(kv.put).toHaveBeenCalledWith(
-        expect.stringContaining('owner/repo'),
-        expect.any(String),
-        expect.objectContaining({ expirationTtl: expect.any(Number) })
-      );
-    });
-
-    it('should include timestamp in key', async () => {
-      const kv = createMockKV();
-      const info = createNotificationInfo('success');
-
-      await saveNotification(kv as unknown as KVNamespace, info);
-
-      const key = kv.put.mock.calls[0][0];
-      expect(key).toMatch(/^notification:/);
-    });
-  });
-
-  describe('isDuplicate', () => {
-    it('should return false for new notification', async () => {
+  describe('loadHistory', () => {
+    it('should return empty array when no history', async () => {
       const kv = createMockKV();
       kv.get.mockResolvedValue(null);
-      const info = createNotificationInfo('success');
 
-      const result = await isDuplicate(kv as unknown as KVNamespace, info);
+      const result = await loadHistory(kv as unknown as KVNamespace);
 
-      expect(result).toBe(false);
+      expect(result).toEqual([]);
     });
 
-    it('should return true for duplicate notification', async () => {
+    it('should return stored history', async () => {
       const kv = createMockKV();
-      kv.get.mockResolvedValue('exists');
-      const info = createNotificationInfo('success');
+      const history = ['心配そうに伝える', '茶化し気味に伝える'];
+      kv.get.mockResolvedValue(history);
 
-      const result = await isDuplicate(kv as unknown as KVNamespace, info);
+      const result = await loadHistory(kv as unknown as KVNamespace);
 
-      expect(result).toBe(true);
+      expect(result).toEqual(history);
+    });
+
+    it('should return empty array on error', async () => {
+      const kv = createMockKV();
+      kv.get.mockRejectedValue(new Error('KV error'));
+
+      const result = await loadHistory(kv as unknown as KVNamespace);
+
+      expect(result).toEqual([]);
     });
   });
 
-  describe('getRecentNotifications', () => {
-    it('should return list of recent notifications', async () => {
+  describe('saveHistory', () => {
+    it('should save history to KV', async () => {
       const kv = createMockKV();
-      kv.list.mockResolvedValue({
-        keys: [
-          { name: 'notification:owner/repo:123:1' },
-          { name: 'notification:owner/repo:456:2' },
-        ],
-      });
-      kv.get.mockImplementation((key: string) => {
-        if (key.includes('123')) {
-          return Promise.resolve(JSON.stringify(createNotificationInfo('success')));
-        }
-        return Promise.resolve(JSON.stringify(createNotificationInfo('failure')));
-      });
+      const history = ['心配そうに伝える'];
 
-      const result = await getRecentNotifications(kv as unknown as KVNamespace, 'owner/repo', 10);
+      await saveHistory(kv as unknown as KVNamespace, history);
 
-      expect(result).toHaveLength(2);
+      expect(kv.put).toHaveBeenCalledWith('tone_history', JSON.stringify(history));
+    });
+
+    it('should keep only last 5 items', async () => {
+      const kv = createMockKV();
+      const history = ['1', '2', '3', '4', '5', '6', '7'];
+
+      await saveHistory(kv as unknown as KVNamespace, history);
+
+      expect(kv.put).toHaveBeenCalledWith('tone_history', JSON.stringify(['3', '4', '5', '6', '7']));
     });
   });
 });

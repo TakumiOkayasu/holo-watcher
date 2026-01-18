@@ -1,88 +1,76 @@
-import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import worker from '../src/index';
 
-const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
-
 describe('CI Notification Worker', () => {
-  describe('HTTP method handling', () => {
-    it('should return 405 for GET requests', async () => {
-      const request = new IncomingRequest('http://example.com');
-      const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx);
-      await waitOnExecutionContext(ctx);
+  const createRequest = (url: string, options?: RequestInit) =>
+    new Request(url, options);
 
-      expect(response.status).toBe(405);
-    });
-
-    it('should return 405 for PUT requests', async () => {
-      const request = new IncomingRequest('http://example.com', { method: 'PUT' });
-      const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx);
-      await waitOnExecutionContext(ctx);
-
-      expect(response.status).toBe(405);
-    });
+  const createExecutionContext = () => ({
+    waitUntil: () => {},
+    passThroughOnException: () => {},
   });
 
-  describe('GitHub Webhook handling', () => {
-    it('should return 401 for missing signature', async () => {
-      const request = new IncomingRequest('http://example.com', {
-        method: 'POST',
-        headers: {
-          'X-GitHub-Event': 'workflow_run',
-        },
-        body: '{}',
-      });
-      const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx);
-      await waitOnExecutionContext(ctx);
-
-      expect(response.status).toBe(401);
-    });
-
-    it('should return 400 for non-workflow_run events', async () => {
-      const request = new IncomingRequest('http://example.com', {
-        method: 'POST',
-        headers: {
-          'X-GitHub-Event': 'push',
-          'X-Hub-Signature-256': 'sha256=dummy',
-        },
-        body: '{}',
-      });
-      const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx);
-      await waitOnExecutionContext(ctx);
-
-      expect(response.status).toBe(400);
-    });
-
-    it('should return 200 for ping event', async () => {
-      const request = new IncomingRequest('http://example.com', {
-        method: 'POST',
-        headers: {
-          'X-GitHub-Event': 'ping',
-        },
-        body: '{}',
-      });
-      const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx);
-      await waitOnExecutionContext(ctx);
-
-      expect(response.status).toBe(200);
-      const text = await response.text();
-      expect(text).toContain('pong');
-    });
+  const createEnv = () => ({
+    GITHUB_WEBHOOK_SECRET: 'test-secret',
+    ANTHROPIC_API_KEY: 'test-api-key',
+    DISCORD_WEBHOOK_URL: 'https://discord.com/api/webhooks/test',
+    HOLO_HISTORY: {} as KVNamespace,
   });
 
   describe('Health check', () => {
-    it('should return 200 for /health endpoint', async () => {
-      const request = new IncomingRequest('http://example.com/health');
+    it('should return 200 for / endpoint', async () => {
+      const request = createRequest('http://example.com/');
       const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx);
-      await waitOnExecutionContext(ctx);
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
 
       expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json).toHaveProperty('status', 'ok');
+    });
+
+    it('should return 200 for /health endpoint', async () => {
+      const request = createRequest('http://example.com/health');
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('CORS handling', () => {
+    it('should handle OPTIONS preflight request', async () => {
+      const request = createRequest('http://example.com/', { method: 'OPTIONS' });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    });
+  });
+
+  describe('Routing', () => {
+    it('should return 404 for unknown paths', async () => {
+      const request = createRequest('http://example.com/unknown');
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 401 for webhook without signature', async () => {
+      const request = createRequest('http://example.com/webhook', {
+        method: 'POST',
+        body: '{}',
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(401);
     });
   });
 });

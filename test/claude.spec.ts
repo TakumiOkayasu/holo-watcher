@@ -1,98 +1,65 @@
-import { describe, it, expect, vi } from 'vitest';
-import { generateHoloMessage } from '../src/claude';
-import type { NotificationInfo } from '../src/types';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { convertToHolo } from '../src/claude';
+import type { GitHubErrorInfo } from '../src/types';
+
+// Anthropic SDKをモック
+vi.mock('@anthropic-ai/sdk', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    messages: {
+      create: vi.fn().mockResolvedValue({
+        content: [{ type: 'text', text: 'わっちは嬉しいのじゃ！CIが成功したぞ！' }],
+      }),
+    },
+  })),
+}));
 
 describe('Claude API', () => {
   const mockApiKey = 'test-api-key';
 
-  const createNotificationInfo = (result: 'success' | 'failure'): NotificationInfo => ({
-    result,
-    workflowName: 'CI',
-    repositoryName: 'owner/repo',
-    repositoryUrl: 'https://github.com/owner/repo',
+  const createErrorInfo = (conclusion: 'success' | 'failure'): GitHubErrorInfo => ({
+    repo: 'owner/repo',
+    workflow: 'CI',
     branch: 'main',
-    commitSha: 'abc123',
-    runUrl: 'https://github.com/owner/repo/actions/runs/123',
-    runNumber: 42,
-    sender: 'developer',
+    commit: 'abc123def456789',
+    commitMsg: 'fix: some bug',
+    url: 'https://github.com/owner/repo/actions/runs/123',
+    author: 'developer',
+    conclusion,
   });
 
-  const createMockFetch = (response: { ok: boolean; status?: number; data?: unknown }) => {
-    return vi.fn().mockResolvedValue({
-      ok: response.ok,
-      status: response.status ?? 200,
-      statusText: response.ok ? 'OK' : 'Internal Server Error',
-      json: () => Promise.resolve(response.data),
-    });
-  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('should generate message for successful CI', async () => {
-    const mockFetch = createMockFetch({
-      ok: true,
-      data: {
-        content: [{ type: 'text', text: 'わっちは嬉しいのじゃ！CIが成功したぞ！' }],
-      },
-    });
-
-    const info = createNotificationInfo('success');
-    const message = await generateHoloMessage(info, mockApiKey, mockFetch);
+    const info = createErrorInfo('success');
+    const history: string[] = [];
+    const message = await convertToHolo(info, history, mockApiKey);
 
     expect(message).toBe('わっちは嬉しいのじゃ！CIが成功したぞ！');
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.anthropic.com/v1/messages',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'x-api-key': mockApiKey,
-        }),
-      })
-    );
   });
 
   it('should generate message for failed CI', async () => {
-    const mockFetch = createMockFetch({
-      ok: true,
-      data: {
-        content: [{ type: 'text', text: 'ぬしよ、CIが失敗しておるぞ。早く直すのじゃ。' }],
-      },
-    });
+    const info = createErrorInfo('failure');
+    const history: string[] = [];
+    const message = await convertToHolo(info, history, mockApiKey);
 
-    const info = createNotificationInfo('failure');
-    const message = await generateHoloMessage(info, mockApiKey, mockFetch);
-
-    expect(message).toBe('ぬしよ、CIが失敗しておるぞ。早く直すのじゃ。');
+    expect(typeof message).toBe('string');
   });
 
-  it('should throw error when API fails', async () => {
-    const mockFetch = createMockFetch({
-      ok: false,
-      status: 500,
-    });
+  it('should update history after generation', async () => {
+    const info = createErrorInfo('success');
+    const history: string[] = [];
+    await convertToHolo(info, history, mockApiKey);
 
-    const info = createNotificationInfo('success');
-    await expect(generateHoloMessage(info, mockApiKey, mockFetch)).rejects.toThrow(
-      'Claude API error'
-    );
+    expect(history.length).toBe(1);
   });
 
-  it('should include CI info in the prompt', async () => {
-    const mockFetch = createMockFetch({
-      ok: true,
-      data: {
-        content: [{ type: 'text', text: 'テストメッセージ' }],
-      },
-    });
+  it('should keep history max 5 items', async () => {
+    const info = createErrorInfo('success');
+    const history = ['1', '2', '3', '4', '5'];
+    await convertToHolo(info, history, mockApiKey);
 
-    const info = createNotificationInfo('success');
-    await generateHoloMessage(info, mockApiKey, mockFetch);
-
-    const fetchCall = mockFetch.mock.calls[0];
-    const body = JSON.parse(fetchCall[1].body);
-    const userMessage = body.messages[0].content;
-
-    expect(userMessage).toContain('owner/repo');
-    expect(userMessage).toContain('CI');
-    expect(userMessage).toContain('main');
-    expect(userMessage).toContain('成功');
+    expect(history.length).toBe(5);
   });
 });
