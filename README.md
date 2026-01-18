@@ -1,10 +1,11 @@
 # 🐺 Holo CI Bot
 
-GitHub Actions CI失敗通知を「狼と香辛料」のホロの口調でDiscordに送信するサーバーレスBot
+GitHub Actions CI結果(成功/失敗)を「狼と香辛料」のホロの口調でDiscordに送信するサーバーレスBot
 
 ## 特徴
 
 - ✅ Cloudflare Workers(サーバーレス)
+- ✅ CI成功時は緑、失敗時は赤でDiscord通知
 - ✅ 毎回異なる口調パターン(8種類)
 - ✅ Workers KVで履歴管理
 - ✅ Claude API(Sonnet 4)でホロ口調化
