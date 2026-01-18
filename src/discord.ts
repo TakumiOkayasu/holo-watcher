@@ -9,9 +9,11 @@ import type { GitHubErrorInfo, DiscordWebhookPayload } from './types';
 export async function sendToDiscord(
   message: string,
   errorInfo: GitHubErrorInfo,
-  webhookUrl: string
+  webhookUrl: string,
+  fetchFn: typeof fetch = fetch
 ): Promise<void> {
-  const payload: DiscordWebhookPayload = {
+	const payload: DiscordWebhookPayload = {
+		username: 'CI結果を教えてくれるホロ',
     embeds: [
       {
         title: '🐺 CI失敗のお知らせじゃ',
@@ -33,7 +35,7 @@ export async function sendToDiscord(
     ],
   };
 
-  const response = await fetch(webhookUrl, {
+  const response = await fetchFn(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify(payload),

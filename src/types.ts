@@ -50,5 +50,6 @@ export interface DiscordEmbed {
  * Discord Webhook送信ペイロード
  */
 export interface DiscordWebhookPayload {
+	username?: string;
   embeds: DiscordEmbed[];
 }
