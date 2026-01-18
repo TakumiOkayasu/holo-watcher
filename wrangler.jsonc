@@ -21,6 +21,9 @@
 			"id": "0751ad71e99b4f2189beb5446d5daad6",
 			"preview_id": "95a36ec39e9246419733ab7262194b83"
 		}
+	],
+	"routes": [
+		{ "pattern": "workers.murata-lab.net/*", "zone_name": "murata-lab.net" }
 	]
 	/**
 	 * Smart Placement

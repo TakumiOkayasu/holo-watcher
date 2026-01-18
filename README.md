@@ -42,10 +42,6 @@ bun run dev
 bun run deploy
 ```
 
-## 使い方
-
-GitHub WebhookでURL指定: `https://workers.murata-lab.net/webhook`
-
 ## 開発
 
 ```bash
