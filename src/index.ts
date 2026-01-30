@@ -64,6 +64,18 @@ async function handleWebhook(
 
     // 3. ペイロード解析
     const payload = JSON.parse(body);
+
+    // 3.5. オーナー検証 (ALLOWED_OWNERが設定されている場合のみ)
+    if (env.ALLOWED_OWNER) {
+      const owner = payload.repository?.owner?.login;
+      if (owner !== env.ALLOWED_OWNER) {
+        return new Response(
+          JSON.stringify({ status: 'ignored', reason: 'unauthorized owner' }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     const errorInfo = parseWebhook(payload);
 
     if (!errorInfo) {

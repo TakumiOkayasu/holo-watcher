@@ -13,6 +13,9 @@ export interface Env {
 
   // Workers KV Namespace(口調履歴保存用)
   HOLO_HISTORY: KVNamespace;
+
+  // 許可するGitHubアカウント/Organization名 (オプション)
+  ALLOWED_OWNER?: string;
 }
 
 /**
