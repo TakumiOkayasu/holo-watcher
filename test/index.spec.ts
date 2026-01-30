@@ -10,11 +10,19 @@ describe('CI Notification Worker', () => {
     passThroughOnException: () => {},
   });
 
+  const createMockKV = (): KVNamespace => ({
+    get: async () => null,
+    put: async () => {},
+    delete: async () => {},
+    list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
+    getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
+  }) as unknown as KVNamespace;
+
   const createEnv = (overrides?: Partial<ReturnType<typeof createEnv>>) => ({
     GITHUB_WEBHOOK_SECRET: 'test-secret',
     ANTHROPIC_API_KEY: 'test-api-key',
     DISCORD_WEBHOOK_URL: 'https://discord.com/api/webhooks/test',
-    HOLO_HISTORY: {} as KVNamespace,
+    HOLO_HISTORY: createMockKV(),
     ...overrides,
   });
 
