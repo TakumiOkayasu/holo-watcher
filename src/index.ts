@@ -113,8 +113,10 @@ async function handleWebhook(
     );
 
     // 7. 履歴保存(非同期)
-		ctx.waitUntil(saveHistory(env.HOLO_HISTORY, history))
-			.catch(e => console.error('History save failed:', e));
+    ctx.waitUntil(
+      saveHistory(env.HOLO_HISTORY, history)
+        .catch(e => console.error('History save failed:', e))
+    );
 
     // 8. 即座にレスポンス返却
     return new Response(
