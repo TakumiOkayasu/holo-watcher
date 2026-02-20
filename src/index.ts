@@ -1,7 +1,8 @@
 import type { Env } from './types';
 import { verifyGitHubSignature, parseWebhook } from './github';
 import { convertToHolo } from './claude';
-import { sendToDiscord } from './discord';
+import { sendToDiscord, sendErrorToDiscord } from './discord';
+import { buildApiErrorMessage } from './errors';
 import { loadHistory, saveHistory } from './history';
 
 /**
@@ -89,13 +90,31 @@ async function handleWebhook(
     const history = await loadHistory(env.HOLO_HISTORY);
 
     // 5. ホロ口調化
-    const holoMessage = await convertToHolo(errorInfo, history, env.ANTHROPIC_API_KEY);
+    let holoMessage: string;
+    try {
+      holoMessage = await convertToHolo(errorInfo, history, env.ANTHROPIC_API_KEY);
+    } catch (error) {
+      const errorMessage = buildApiErrorMessage(error);
+      console.error('Claude API error:', errorMessage);
+      ctx.waitUntil(
+        sendErrorToDiscord(errorMessage, errorInfo, env.DISCORD_WEBHOOK_URL)
+          .catch(e => console.error('Discord notification failed:', e))
+      );
+      return new Response(
+        JSON.stringify({ status: 'accepted', error: errorMessage }),
+        { status: 202, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     // 6. Discord送信(非同期で実行、レスポンスを待たない)
-    ctx.waitUntil(sendToDiscord(holoMessage, errorInfo, env.DISCORD_WEBHOOK_URL));
+    ctx.waitUntil(
+      sendToDiscord(holoMessage, errorInfo, env.DISCORD_WEBHOOK_URL)
+        .catch(e => console.error('Discord notification failed:', e))
+    );
 
     // 7. 履歴保存(非同期)
-    ctx.waitUntil(saveHistory(env.HOLO_HISTORY, history));
+		ctx.waitUntil(saveHistory(env.HOLO_HISTORY, history))
+			.catch(e => console.error('History save failed:', e));
 
     // 8. 即座にレスポンス返却
     return new Response(

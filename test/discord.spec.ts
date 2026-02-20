@@ -17,7 +17,7 @@ describe('Discord Webhook', () => {
   });
 
   const createMockFetch = (ok: boolean, status = 200) =>
-    vi.fn().mockResolvedValue({ ok, status });
+    vi.fn().mockResolvedValue({ ok, status, text: async () => 'error body' });
 
   it('should set username to "CI結果を教えてくれるホロ"', async () => {
     const mockFetch = createMockFetch(true);
@@ -71,6 +71,6 @@ describe('Discord Webhook', () => {
 
     await expect(
       sendToDiscord('test', errorInfo, webhookUrl, mockFetch)
-    ).rejects.toThrow('Discord API error: 400');
+    ).rejects.toThrow('Discord API error: 400 error body');
   });
 });

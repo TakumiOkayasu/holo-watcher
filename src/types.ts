@@ -47,7 +47,7 @@ export interface DiscordEmbed {
   footer: {
     text: string;
   };
-  url: string;
+  url?: string;
 }
 
 /**
