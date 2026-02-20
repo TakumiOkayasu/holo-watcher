@@ -16,6 +16,9 @@ export interface Env {
 
   // 許可するGitHubアカウント/Organization名 (オプション)
   ALLOWED_OWNER?: string;
+
+  // /api/notify エンドポイント認証用トークン
+  NOTIFY_API_TOKEN: string;
 }
 
 /**
@@ -30,6 +33,23 @@ export interface GitHubErrorInfo {
   url: string;           // GitHub Actions実行URL
   author: string;        // コミット作者
   conclusion: 'success' | 'failure'; // CI結果
+}
+
+/**
+ * /api/notify エンドポイントのリクエストボディ
+ */
+export interface NotifyRequest {
+  repo: string;
+  workflow: string;
+  branch: string;
+  run_id: string;
+  run_url: string;
+  commit: string;
+  commit_msg: string;
+  author: string;
+  error_summary: string;
+  has_fix_pr?: boolean;
+  fix_pr_url?: string;
 }
 
 /**

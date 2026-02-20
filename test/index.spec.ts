@@ -23,6 +23,7 @@ describe('CI Notification Worker', () => {
     ANTHROPIC_API_KEY: 'test-api-key',
     DISCORD_WEBHOOK_URL: 'https://discord.com/api/webhooks/test',
     HOLO_HISTORY: createMockKV(),
+    NOTIFY_API_TOKEN: 'test-notify-token',
     ...overrides,
   });
 
@@ -183,6 +184,94 @@ describe('CI Notification Worker', () => {
 
       // Should not be 403 (no owner restriction)
       expect(response.status).not.toBe(403);
+    });
+  });
+
+  describe('/api/notify endpoint', () => {
+    const notifyPayload = {
+      repo: 'owner/repo',
+      workflow: 'CI',
+      branch: 'main',
+      run_id: '12345',
+      run_url: 'https://github.com/owner/repo/actions/runs/12345',
+      commit: 'abc123def456789',
+      commit_msg: 'fix: some bug',
+      author: 'developer',
+      error_summary: 'Error: test failed at line 42',
+    };
+
+    it('should return 401 without Authorization header', async () => {
+      const request = createRequest('http://example.com/api/notify', {
+        method: 'POST',
+        body: JSON.stringify(notifyPayload),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 401 with wrong token', async () => {
+      const request = createRequest('http://example.com/api/notify', {
+        method: 'POST',
+        body: JSON.stringify(notifyPayload),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer wrong-token',
+        },
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 400 for invalid JSON', async () => {
+      const request = createRequest('http://example.com/api/notify', {
+        method: 'POST',
+        body: 'not-json',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer test-notify-token',
+        },
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json).toHaveProperty('message', 'Invalid JSON');
+    });
+
+    it('should return 400 for missing required fields', async () => {
+      const request = createRequest('http://example.com/api/notify', {
+        method: 'POST',
+        body: JSON.stringify({ branch: 'main' }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer test-notify-token',
+        },
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json).toHaveProperty('message', 'Missing required fields');
+    });
+
+    it('should include Authorization in CORS headers', async () => {
+      const request = createRequest('http://example.com/api/notify', { method: 'OPTIONS' });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
     });
   });
 });

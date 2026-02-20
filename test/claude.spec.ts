@@ -62,4 +62,29 @@ describe('Claude API', () => {
 
     expect(history.length).toBe(5);
   });
+
+  it('should include errorSummary in prompt when provided', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const info = createErrorInfo('failure');
+    const history: string[] = [];
+    await convertToHolo(info, history, mockApiKey, 'Error: test failed at line 42');
+
+    const mockInstance = vi.mocked(Anthropic).mock.results[0].value;
+    const createCall = mockInstance.messages.create.mock.calls[0][0];
+    const prompt = createCall.messages[0].content as string;
+    expect(prompt).toContain('【エラー詳細】');
+    expect(prompt).toContain('Error: test failed at line 42');
+  });
+
+  it('should not include error detail section without errorSummary', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const info = createErrorInfo('failure');
+    const history: string[] = [];
+    await convertToHolo(info, history, mockApiKey);
+
+    const mockInstance = vi.mocked(Anthropic).mock.results[0].value;
+    const createCall = mockInstance.messages.create.mock.calls[0][0];
+    const prompt = createCall.messages[0].content as string;
+    expect(prompt).not.toContain('【エラー詳細】');
+  });
 });

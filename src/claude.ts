@@ -25,7 +25,8 @@ const TONE_PATTERNS = [
 export async function convertToHolo(
   errorInfo: GitHubErrorInfo,
   history: string[],
-  apiKey: string
+  apiKey: string,
+  errorSummary?: string
 ): Promise<string> {
   const client = new Anthropic({ apiKey });
 
@@ -64,7 +65,7 @@ ${recentList}
 - コミット: ${errorInfo.commit.substring(0, 7)}
 - コミットメッセージ: ${errorInfo.commitMsg.substring(0, 100)}
 
-【変換ルール】
+${errorSummary ? `【エラー詳細】\n${errorSummary.substring(0, 800)}\n\n` : ''}【変換ルール】
 1. 150-250文字程度で簡潔に
 2. 技術用語は適宜わかりやすく
 3. ${isSuccess ? '成功を喜びつつ' : '失敗の事実を伝えつつ'}、ホロらしさを出す
