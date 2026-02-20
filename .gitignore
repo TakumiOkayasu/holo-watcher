@@ -168,3 +168,7 @@ dist
 .env*
 !.env.example
 .wrangler/
+
+# Local dev files
+TODO.md
+claude_tmp/

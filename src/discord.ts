@@ -12,9 +12,9 @@ export async function sendToDiscord(
   webhookUrl: string,
   fetchFn: typeof fetch = fetch
 ): Promise<void> {
-	const isSuccess = errorInfo.conclusion === 'success';
-	const payload: DiscordWebhookPayload = {
-		username: 'CI結果を教えてくれるホロ',
+  const isSuccess = errorInfo.conclusion === 'success';
+  const payload: DiscordWebhookPayload = {
+    username: 'CI結果を教えてくれるホロ',
     embeds: [
       {
         title: isSuccess ? '🐺 CI成功じゃ!' : '🐺 CI失敗のお知らせじゃ',
@@ -43,6 +43,51 @@ export async function sendToDiscord(
   });
 
   if (!response.ok) {
-    throw new Error(`Discord API error: ${response.status}`);
+    const body = await response.text().catch(() => '');
+    throw new Error(`Discord API error: ${response.status} ${body}`.trim());
+  }
+}
+
+/**
+ * Claude APIエラーをDiscordに通知
+ */
+export async function sendErrorToDiscord(
+  errorMessage: string,
+  errorInfo: GitHubErrorInfo | null,
+  webhookUrl: string,
+  fetchFn: typeof fetch = fetch
+): Promise<void> {
+  const fields = errorInfo
+    ? [
+        { name: '📦 リポジトリ', value: errorInfo.repo, inline: true },
+        { name: '🌿 ブランチ', value: errorInfo.branch, inline: true },
+        { name: '👤 作者', value: errorInfo.author, inline: true },
+        { name: '💬 コミット', value: errorInfo.commitMsg.substring(0, 100), inline: false },
+      ]
+    : [];
+
+  const payload: DiscordWebhookPayload = {
+    username: 'CI結果を教えてくれるホロ',
+    embeds: [
+      {
+        title: '⚠️ Claude API エラー',
+        description: errorMessage,
+        color: 0xfee75c,
+        fields,
+        footer: { text: errorInfo ? `Commit: ${errorInfo.commit.substring(0, 7)}` : 'CI情報なし' },
+        url: errorInfo?.url,
+      },
+    ],
+  };
+
+  const response = await fetchFn(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Discord API error: ${response.status} ${body}`.trim());
   }
 }
