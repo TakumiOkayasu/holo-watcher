@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { convertToHolo } from '../src/claude';
 import type { GitHubErrorInfo } from '../src/types';
 
-// Anthropic SDKをモック
+// モックの create 関数を外部から参照できるようにする
+const mockCreate = vi.fn().mockResolvedValue({
+  content: [{ type: 'text', text: 'わっちは嬉しいのじゃ！CIが成功したぞ！' }],
+});
+
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn().mockImplementation(() => ({
-    messages: {
-      create: vi.fn().mockResolvedValue({
-        content: [{ type: 'text', text: 'わっちは嬉しいのじゃ！CIが成功したぞ！' }],
-      }),
-    },
+    messages: { create: mockCreate },
   })),
 }));
 
@@ -61,5 +61,26 @@ describe('Claude API', () => {
     await convertToHolo(info, history, mockApiKey);
 
     expect(history.length).toBe(5);
+  });
+
+  it('should include errorSummary in prompt when provided', async () => {
+    const info = createErrorInfo('failure');
+    const history: string[] = [];
+    await convertToHolo(info, history, mockApiKey, 'Error: test failed at line 42');
+
+    const createCall = mockCreate.mock.calls[0][0];
+    const prompt = createCall.messages[0].content as string;
+    expect(prompt).toContain('【エラー詳細】');
+    expect(prompt).toContain('Error: test failed at line 42');
+  });
+
+  it('should not include error detail section without errorSummary', async () => {
+    const info = createErrorInfo('failure');
+    const history: string[] = [];
+    await convertToHolo(info, history, mockApiKey);
+
+    const createCall = mockCreate.mock.calls[0][0];
+    const prompt = createCall.messages[0].content as string;
+    expect(prompt).not.toContain('【エラー詳細】');
   });
 });

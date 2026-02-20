@@ -1,5 +1,6 @@
-import type { Env } from './types';
+import type { Env, NotifyRequest, GitHubErrorInfo } from './types';
 import { verifyGitHubSignature, parseWebhook } from './github';
+import { verifyBearerToken } from './auth';
 import { convertToHolo } from './claude';
 import { sendToDiscord, sendErrorToDiscord } from './discord';
 import { buildApiErrorMessage } from './errors';
@@ -16,7 +17,7 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'POST, GET',
-          'Access-Control-Allow-Headers': 'Content-Type, X-Hub-Signature-256',
+          'Access-Control-Allow-Headers': 'Content-Type, X-Hub-Signature-256, Authorization',
         },
       });
     }
@@ -26,6 +27,10 @@ export default {
     // ルーティング
     if (url.pathname === '/webhook' && request.method === 'POST') {
       return handleWebhook(request, env, ctx);
+    }
+
+    if (url.pathname === '/api/notify' && request.method === 'POST') {
+      return handleNotify(request, env, ctx);
     }
 
     if (url.pathname === '/health' || url.pathname === '/') {
@@ -44,6 +49,104 @@ export default {
     return new Response('Not Found', { status: 404 });
   },
 };
+
+/**
+ * /api/notify 処理ハンドラー (CI失敗詳細通知)
+ */
+async function handleNotify(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  try {
+    // 1. Bearer token認証
+    const authHeader = request.headers.get('Authorization');
+    if (!(await verifyBearerToken(authHeader, env.NOTIFY_API_TOKEN))) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    // 2. JSON解析
+    let body: NotifyRequest;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ status: 'error', message: 'Invalid JSON' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // 3. バリデーション
+    if (!body.repo || !body.workflow || !body.run_url) {
+      return new Response(
+        JSON.stringify({ status: 'error', message: 'Missing required fields' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // 4. GitHubErrorInfoに変換
+    const errorInfo: GitHubErrorInfo = {
+      repo: body.repo,
+      workflow: body.workflow,
+      branch: body.branch,
+      commit: body.commit,
+      commitMsg: body.commit_msg,
+      url: body.run_url,
+      author: body.author,
+      conclusion: 'failure',
+    };
+
+    // 5. エラーサマリーを1000文字でキャップ + Fix PR情報を付加
+    let errorSummary = body.error_summary?.substring(0, 1000) ?? '';
+    if (body.has_fix_pr && body.fix_pr_url) {
+      errorSummary += `\n\n自動修正PRが作成されました: ${body.fix_pr_url}`;
+    }
+
+    // 6. 履歴読み込み + ホロ口調化
+    const history = await loadHistory(env.HOLO_HISTORY);
+    let holoMessage: string;
+    try {
+      holoMessage = await convertToHolo(errorInfo, history, env.ANTHROPIC_API_KEY, errorSummary || undefined);
+    } catch (error) {
+      const errorMessage = buildApiErrorMessage(error);
+      console.error('Claude API error:', errorMessage);
+      ctx.waitUntil(
+        sendErrorToDiscord(errorMessage, errorInfo, env.DISCORD_WEBHOOK_URL)
+          .catch(e => console.error('Discord notification failed:', e))
+      );
+      return new Response(
+        JSON.stringify({ status: 'accepted', error: errorMessage }),
+        { status: 202, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // 7. Discord送信(非同期)
+    ctx.waitUntil(
+      sendToDiscord(holoMessage, errorInfo, env.DISCORD_WEBHOOK_URL)
+        .catch(e => console.error('Discord notification failed:', e))
+    );
+
+    // 8. 履歴保存(非同期)
+    ctx.waitUntil(
+      saveHistory(env.HOLO_HISTORY, history)
+        .catch(e => console.error('History save failed:', e))
+    );
+
+    return new Response(
+      JSON.stringify({ status: 'success', preview: holoMessage.substring(0, 50) + '...' }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error:', error);
+    return new Response(
+      JSON.stringify({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
 
 /**
  * GitHub Webhook処理ハンドラー
