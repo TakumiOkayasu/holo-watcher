@@ -14,6 +14,9 @@ export interface Env {
   // Workers KV Namespace(口調履歴保存用)
   HOLO_HISTORY: KVNamespace;
 
+  // GitHub API Token (失敗ログ取得用、オプション)
+  GITHUB_TOKEN?: string;
+
   // 許可するGitHubアカウント/Organization名 (オプション)
   ALLOWED_OWNER?: string;
 
@@ -40,6 +43,7 @@ export interface GitHubErrorInfo {
   url: string;           // GitHub Actions実行URL
   author: string;        // コミット作者
   conclusion: WorkflowConclusion; // CI結果
+  runId?: number;        // workflow_run.id (GitHub API呼び出し用)
 }
 
 /**

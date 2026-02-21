@@ -83,5 +83,6 @@ export function parseWebhook(payload: any): GitHubErrorInfo | null {
     url: run.html_url,
     author: run.head_commit?.author?.name || 'Unknown',
     conclusion: run.conclusion as WorkflowConclusion,
+    runId: run.id,
   };
 }

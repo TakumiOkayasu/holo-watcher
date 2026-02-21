@@ -5,6 +5,7 @@ import { convertToHolo } from './claude';
 import { sendToDiscord, sendErrorToDiscord } from './discord';
 import { buildApiErrorMessage } from './errors';
 import { loadHistory, saveHistory } from './history';
+import { fetchErrorSummary } from './github-api';
 
 /**
  * Cloudflare Workers エントリーポイント
@@ -189,13 +190,21 @@ async function handleWebhook(
       });
     }
 
-    // 4. 履歴読み込み
+    // 4. 失敗時はエラー詳細を取得 (GITHUB_TOKENがある場合のみ)
+    let errorSummary: string | undefined;
+    if (errorInfo.conclusion !== 'success' && env.GITHUB_TOKEN && errorInfo.runId) {
+      errorSummary =
+        (await fetchErrorSummary(errorInfo.repo, errorInfo.runId, env.GITHUB_TOKEN))
+        ?? undefined;
+    }
+
+    // 5. 履歴読み込み
     const history = await loadHistory(env.HOLO_HISTORY);
 
-    // 5. ホロ口調化
+    // 6. ホロ口調化
     let holoMessage: string;
     try {
-      holoMessage = await convertToHolo(errorInfo, history, env.ANTHROPIC_API_KEY);
+      holoMessage = await convertToHolo(errorInfo, history, env.ANTHROPIC_API_KEY, errorSummary);
     } catch (error) {
       const errorMessage = buildApiErrorMessage(error);
       console.error('Claude API error:', errorMessage);
