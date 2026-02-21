@@ -41,7 +41,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     echo "Setting $key ..."
     printf '%s' "$value" | bunx wrangler secret put "$key"
   fi
-  ((count++))
+  count=$((count + 1))
 done < "$EXAMPLE_FILE"
 
 if [[ "$DRY_RUN" == true ]]; then
