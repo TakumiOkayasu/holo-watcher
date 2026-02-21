@@ -183,8 +183,8 @@ async function handleWebhook(
     const errorInfo = parseWebhook(payload);
 
     if (!errorInfo) {
-      // 失敗イベントでない場合はスキップ
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'not a failure event' }), {
+      // 対象外イベントの場合はスキップ
+      return new Response(JSON.stringify({ status: 'ignored', reason: 'not a target event' }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }

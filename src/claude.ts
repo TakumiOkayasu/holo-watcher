@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { GitHubErrorInfo } from './types';
+import type { GitHubErrorInfo, WorkflowConclusion } from './types';
 
 /**
  * ホロの口調バリエーション(8パターン)
@@ -15,9 +15,29 @@ const TONE_PATTERNS = [
   '同情的に伝える',
 ] as const;
 
+const EVENT_TYPE_MAP: Record<WorkflowConclusion, string> = {
+  success: 'CI成功',
+  failure: 'CI失敗',
+  cancelled: 'CIキャンセル',
+  skipped: 'CIスキップ',
+  timed_out: 'CIタイムアウト',
+  stale: 'CI期限切れ',
+  action_required: 'CI要対応',
+};
+
+const CONCLUSION_PROMPT_HINT: Record<WorkflowConclusion, string> = {
+  success: '成功を喜びつつ',
+  failure: '失敗の事実を伝えつつ',
+  cancelled: 'キャンセルされた経緯を伝えつつ',
+  skipped: 'スキップされた事実を軽く伝えつつ',
+  timed_out: 'タイムアウトした状況を伝えつつ',
+  stale: '古くなった事実を伝えつつ',
+  action_required: '対応が必要なことを伝えつつ',
+};
+
 /**
- * CI失敗情報をホロの口調に変換
- * @param errorInfo CI失敗情報
+ * CI結果情報をホロの口調に変換
+ * @param errorInfo CI結果情報
  * @param history 最近使った口調の履歴(最大5件)
  * @param apiKey Anthropic API Key
  * @returns ホロ口調のメッセージ
@@ -41,8 +61,7 @@ export async function convertToHolo(
   const recentList = history.length > 0 ? history.map((h) => `- ${h}`).join('\n') : '(初回)';
 
   // プロンプト構築
-  const isSuccess = errorInfo.conclusion === 'success';
-  const eventType = isSuccess ? 'CI成功' : 'CI失敗';
+  const eventType = EVENT_TYPE_MAP[errorInfo.conclusion];
   const prompt = `以下の${eventType}情報を日本語に翻訳し、「狼と香辛料」のホロの口調で伝えてください。
 
 【ホロの特徴】
@@ -68,7 +87,7 @@ ${recentList}
 ${errorSummary ? `【エラー詳細】\n${errorSummary.substring(0, 800)}\n\n` : ''}【変換ルール】
 1. 150-250文字程度で簡潔に
 2. 技術用語は適宜わかりやすく
-3. ${isSuccess ? '成功を喜びつつ' : '失敗の事実を伝えつつ'}、ホロらしさを出す
+3. ${CONCLUSION_PROMPT_HINT[errorInfo.conclusion]}、ホロらしさを出す
 4. 変換結果のみを出力(説明不要)
 
 【変換後】`;

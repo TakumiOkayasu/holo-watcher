@@ -1,9 +1,19 @@
-import type { GitHubErrorInfo, DiscordWebhookPayload } from './types';
+import type { GitHubErrorInfo, DiscordWebhookPayload, WorkflowConclusion } from './types';
+
+const CONCLUSION_STYLE: Record<WorkflowConclusion, { color: number; title: string }> = {
+  success:         { color: 0x57f287, title: '🐺 CI成功じゃ!' },
+  failure:         { color: 0xed4245, title: '🐺 CI失敗のお知らせじゃ' },
+  cancelled:       { color: 0x95a5a6, title: '🐺 CIがキャンセルされたのじゃ' },
+  skipped:         { color: 0x99aab5, title: '🐺 CIがスキップされたのじゃ' },
+  timed_out:       { color: 0xe67e22, title: '🐺 CIがタイムアウトしたのじゃ' },
+  stale:           { color: 0x7c3aed, title: '🐺 CIが古くなったのじゃ' },
+  action_required: { color: 0xf1c40f, title: '🐺 CIに対応が必要じゃ!' },
+};
 
 /**
  * ホロ口調メッセージをDiscordに送信
  * @param message ホロ口調化されたメッセージ
- * @param errorInfo CI失敗情報
+ * @param errorInfo CI結果情報
  * @param webhookUrl Discord Webhook URL
  */
 export async function sendToDiscord(
@@ -12,14 +22,14 @@ export async function sendToDiscord(
   webhookUrl: string,
   fetchFn: typeof fetch = fetch
 ): Promise<void> {
-  const isSuccess = errorInfo.conclusion === 'success';
+  const style = CONCLUSION_STYLE[errorInfo.conclusion];
   const payload: DiscordWebhookPayload = {
     username: 'CI結果を教えてくれるホロ',
     embeds: [
       {
-        title: isSuccess ? '🐺 CI成功じゃ!' : '🐺 CI失敗のお知らせじゃ',
+        title: style.title,
         description: message,
-        color: isSuccess ? 0x57f287 : 0xed4245, // 緑 or 赤
+        color: style.color,
         fields: [
           { name: '📦 リポジトリ', value: errorInfo.repo, inline: true },
           { name: '🌿 ブランチ', value: errorInfo.branch, inline: true },

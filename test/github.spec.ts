@@ -43,7 +43,7 @@ describe('GitHub Webhook', () => {
   });
 
   describe('parseWebhook', () => {
-    const createPayload = (conclusion: 'success' | 'failure') => ({
+    const createPayload = (conclusion: string) => ({
       action: 'completed',
       workflow_run: {
         name: 'CI',
@@ -88,14 +88,48 @@ describe('GitHub Webhook', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null for cancelled workflow', () => {
-      const payload = {
-        ...createPayload('success'),
-        workflow_run: {
-          ...createPayload('success').workflow_run,
-          conclusion: 'cancelled',
-        },
-      };
+    it('should parse cancelled workflow run', () => {
+      const payload = createPayload('cancelled');
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+      expect(result?.conclusion).toBe('cancelled');
+    });
+
+    it('should parse skipped workflow run', () => {
+      const payload = createPayload('skipped');
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+      expect(result?.conclusion).toBe('skipped');
+    });
+
+    it('should parse timed_out workflow run', () => {
+      const payload = createPayload('timed_out');
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+      expect(result?.conclusion).toBe('timed_out');
+    });
+
+    it('should parse stale workflow run', () => {
+      const payload = createPayload('stale');
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+      expect(result?.conclusion).toBe('stale');
+    });
+
+    it('should parse action_required workflow run', () => {
+      const payload = createPayload('action_required');
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+      expect(result?.conclusion).toBe('action_required');
+    });
+
+    it('should return null for unknown conclusion', () => {
+      const payload = createPayload('unknown_value');
       const result = parseWebhook(payload);
 
       expect(result).toBeNull();

@@ -22,7 +22,14 @@ export interface Env {
 }
 
 /**
- * GitHub CI失敗情報
+ * GitHub workflow_run の conclusion 値
+ */
+export type WorkflowConclusion =
+  | 'success' | 'failure' | 'cancelled' | 'skipped'
+  | 'timed_out' | 'stale' | 'action_required';
+
+/**
+ * GitHub CI結果情報
  */
 export interface GitHubErrorInfo {
   repo: string;          // リポジトリ名(例: owner/repo)
@@ -32,7 +39,7 @@ export interface GitHubErrorInfo {
   commitMsg: string;     // コミットメッセージ
   url: string;           // GitHub Actions実行URL
   author: string;        // コミット作者
-  conclusion: 'success' | 'failure'; // CI結果
+  conclusion: WorkflowConclusion; // CI結果
 }
 
 /**
