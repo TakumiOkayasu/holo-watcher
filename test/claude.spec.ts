@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { convertToHolo } from '../src/claude';
-import type { GitHubErrorInfo } from '../src/types';
+import type { GitHubErrorInfo, WorkflowConclusion } from '../src/types';
 
 // モックの create 関数を外部から参照できるようにする
 const mockCreate = vi.fn().mockResolvedValue({
@@ -16,7 +16,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 describe('Claude API', () => {
   const mockApiKey = 'test-api-key';
 
-  const createErrorInfo = (conclusion: 'success' | 'failure'): GitHubErrorInfo => ({
+  const createErrorInfo = (conclusion: WorkflowConclusion): GitHubErrorInfo => ({
     repo: 'owner/repo',
     workflow: 'CI',
     branch: 'main',
@@ -82,5 +82,15 @@ describe('Claude API', () => {
     const createCall = mockCreate.mock.calls[0][0];
     const prompt = createCall.messages[0].content as string;
     expect(prompt).not.toContain('【エラー詳細】');
+  });
+
+  it('should include CIキャンセル in prompt for cancelled conclusion', async () => {
+    const info = createErrorInfo('cancelled');
+    const history: string[] = [];
+    await convertToHolo(info, history, mockApiKey);
+
+    const createCall = mockCreate.mock.calls[0][0];
+    const prompt = createCall.messages[0].content as string;
+    expect(prompt).toContain('CIキャンセル');
   });
 });

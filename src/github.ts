@@ -1,4 +1,4 @@
-import type { GitHubErrorInfo } from './types';
+import type { GitHubErrorInfo, WorkflowConclusion } from './types';
 
 /**
  * GitHub Webhook署名検証(HMAC-SHA256)
@@ -52,10 +52,15 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+const VALID_CONCLUSIONS: ReadonlySet<string> = new Set<WorkflowConclusion>([
+  'success', 'failure', 'cancelled', 'skipped',
+  'timed_out', 'stale', 'action_required',
+]);
+
 /**
- * GitHub Webhookペイロードを解析してCI失敗情報を抽出
+ * GitHub Webhookペイロードを解析してCI結果情報を抽出
  * @param payload GitHubからのWebhookペイロード
- * @returns CI失敗情報(失敗でない場合はnull)
+ * @returns CI結果情報(対象外の場合はnull)
  */
 export function parseWebhook(payload: any): GitHubErrorInfo | null {
   // workflow_run イベントの completed アクションのみ処理
@@ -64,7 +69,7 @@ export function parseWebhook(payload: any): GitHubErrorInfo | null {
   }
 
   const run = payload.workflow_run;
-  if (!run || !['success', 'failure'].includes(run.conclusion)) {
+  if (!run || !VALID_CONCLUSIONS.has(run.conclusion)) {
     return null;
   }
 
@@ -77,6 +82,6 @@ export function parseWebhook(payload: any): GitHubErrorInfo | null {
     commitMsg: run.head_commit?.message || '',
     url: run.html_url,
     author: run.head_commit?.author?.name || 'Unknown',
-    conclusion: run.conclusion as 'success' | 'failure',
+    conclusion: run.conclusion as WorkflowConclusion,
   };
 }
