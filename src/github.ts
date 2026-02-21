@@ -73,6 +73,12 @@ export function parseWebhook(payload: any): GitHubErrorInfo | null {
     return null;
   }
 
+  // PRマージコミット(重複通知)をスキップ
+  const commitMsg = run.head_commit?.message || '';
+  if (commitMsg.startsWith('Merge pull request')) {
+    return null;
+  }
+
   // CI結果情報を抽出
   return {
     repo: payload.repository.full_name,

@@ -143,5 +143,22 @@ describe('GitHub Webhook', () => {
 
       expect(result).toBeNull();
     });
+
+    it('should return null for merge commit (PR merge)', () => {
+      const payload = createPayload('success');
+      payload.workflow_run.head_commit.message =
+        'Merge pull request #21 from user/feature-branch';
+      const result = parseWebhook(payload);
+
+      expect(result).toBeNull();
+    });
+
+    it('should not skip non-merge commits on main', () => {
+      const payload = createPayload('success');
+      payload.workflow_run.head_commit.message = 'feat: add new feature';
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+    });
   });
 });
