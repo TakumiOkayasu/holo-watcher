@@ -39,17 +39,20 @@ bun run deploy
 
 ## Architecture
 
-```
+```text
 src/
 ├── index.ts          # Workers エントリーポイント (fetch handler)
 ├── types.ts          # 型定義 (Env, GitHubErrorInfo, Discord関連)
 ├── github.ts         # GitHub Webhook署名検証 & ペイロード解析
+├── github-api.ts     # GitHub API (失敗job/step取得)
 ├── claude.ts         # Claude API統合 (ホロ口調変換)
 ├── discord.ts        # Discord Webhook送信
 └── history.ts        # Workers KV履歴管理
 
 test/
 ├── index.spec.ts     # テスト (unit style & integration style)
+├── github.spec.ts    # GitHub Webhook解析テスト
+├── github-api.spec.ts # GitHub API エラー取得テスト
 ├── env.d.ts          # cloudflare:test モジュール型拡張
 └── tsconfig.json     # テスト用TypeScript設定
 ```
@@ -57,30 +60,36 @@ test/
 ## Key Patterns
 
 ### Cloudflare Workers固有
+
 - Node.js crypto は使用不可。Web Crypto API (`crypto.subtle`) を使用
 - KVNamespaceはEnv経由でバインド
 - ExecutionContext.waitUntil() で非同期処理を登録 (レスポンス返却後も継続)
 
 ### テスト
+
 - `cloudflare:test` からインポート (`env`, `createExecutionContext`, `SELF`)
 - Unit style: worker.fetch() を直接呼び出し
 - Integration style: SELF.fetch() でWorkers環境統合テスト
 
 ### 環境変数
+
 Secretsはwrangler secret putで設定:
+
 - GITHUB_WEBHOOK_SECRET
 - ANTHROPIC_API_KEY
 - DISCORD_WEBHOOK_URL
+- GITHUB_TOKEN (オプション: 失敗job/step詳細取得用、Fine-grained PAT actions:read)
 
-### リクエストフロー
-1. GitHub Webhook受信 (POST /)
-2. 署名検証 (github.ts:verifySignature)
-3. ペイロード解析 (github.ts:parseWorkflowRun)
-4. 重複チェック (history.ts:isDuplicate)
-5. 202即座レスポンス + ctx.waitUntil()で非同期処理:
-   - Claude API呼び出し (claude.ts:generateHoloMessage)
-   - Discord送信 (discord.ts:sendDiscordNotification)
-   - 履歴保存 (history.ts:saveNotification)
+### リクエストフロー (POST /webhook)
+
+1. GitHub Webhook受信
+2. 署名検証 (github.ts:verifyGitHubSignature)
+3. オーナー検証 (ALLOWED_OWNER設定時)
+4. ペイロード解析 (github.ts:parseWebhook)
+5. 失敗時: GitHub API で失敗job/step取得 (github-api.ts:fetchErrorSummary, GITHUB_TOKEN設定時のみ)
+6. 履歴読み込み (history.ts:loadHistory)
+7. ホロ口調変換 (claude.ts:convertToHolo, エラー詳細付き)
+8. Discord送信 + 履歴保存 (ctx.waitUntil)
 
 ## Configuration Files
 

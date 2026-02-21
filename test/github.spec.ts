@@ -46,6 +46,7 @@ describe('GitHub Webhook', () => {
     const createPayload = (conclusion: string) => ({
       action: 'completed',
       workflow_run: {
+        id: 12345678,
         name: 'CI',
         head_branch: 'main',
         head_sha: 'abc123def456789',
@@ -126,6 +127,14 @@ describe('GitHub Webhook', () => {
 
       expect(result).not.toBeNull();
       expect(result?.conclusion).toBe('action_required');
+    });
+
+    it('should extract runId from workflow_run', () => {
+      const payload = createPayload('failure');
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+      expect(result?.runId).toBe(12345678);
     });
 
     it('should return null for unknown conclusion', () => {
