@@ -42,6 +42,9 @@ export async function fetchErrorSummary(
     );
 
     if (!response.ok) {
+      console.error(
+        `GitHub API error: ${response.status} ${response.statusText} for ${repo} run=${runId}`
+      );
       return null;
     }
 
@@ -68,7 +71,8 @@ export async function fetchErrorSummary(
     return summary.length > MAX_SUMMARY_LENGTH
       ? summary.substring(0, MAX_SUMMARY_LENGTH)
       : summary;
-  } catch {
+  } catch (error) {
+    console.error(`GitHub API fetch failed for ${repo} run=${runId}:`, error);
     return null;
   }
 }

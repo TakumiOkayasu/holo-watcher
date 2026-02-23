@@ -73,9 +73,9 @@ export function parseWebhook(payload: any): GitHubErrorInfo | null {
     return null;
   }
 
-  // PRマージコミット(重複通知)をスキップ
+  // PRマージコミット(重複通知)をスキップ（成功時のみ）
   const commitMsg = run.head_commit?.message || '';
-  if (commitMsg.startsWith('Merge pull request')) {
+  if (run.conclusion === 'success' && commitMsg.startsWith('Merge pull request')) {
     return null;
   }
 
