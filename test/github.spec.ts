@@ -153,6 +153,16 @@ describe('GitHub Webhook', () => {
       expect(result).toBeNull();
     });
 
+    it('should not skip merge commit when CI fails', () => {
+      const payload = createPayload('failure');
+      payload.workflow_run.head_commit.message =
+        'Merge pull request #23 from user/feature-branch';
+      const result = parseWebhook(payload);
+
+      expect(result).not.toBeNull();
+      expect(result!.conclusion).toBe('failure');
+    });
+
     it('should not skip non-merge commits on main', () => {
       const payload = createPayload('success');
       payload.workflow_run.head_commit.message = 'feat: add new feature';
