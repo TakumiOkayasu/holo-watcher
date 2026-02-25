@@ -84,7 +84,7 @@ Secretsはwrangler secret putで設定:
 
 1. GitHub Webhook受信
 2. 署名検証 (github.ts:verifyGitHubSignature)
-3. オーナー検証 (ALLOWED_OWNER設定時)
+3. オーナー検証 (ALLOWED_OWNER設定時、カンマ区切り複数対応)
 4. ペイロード解析 (github.ts:parseWebhook)
 5. 失敗時: GitHub API で失敗job/step取得 (github-api.ts:fetchErrorSummary, GITHUB_TOKEN設定時のみ)
 6. 履歴読み込み (history.ts:loadHistory)

@@ -17,7 +17,7 @@ export interface Env {
   // GitHub API Token (失敗ログ取得用、オプション)
   GITHUB_TOKEN?: string;
 
-  // 許可するGitHubアカウント/Organization名 (オプション)
+  // 許可するGitHubアカウント/Organization名 (カンマ区切りで複数指定可、オプション)
   ALLOWED_OWNER?: string;
 
   // /api/notify エンドポイント認証用トークン
