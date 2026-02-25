@@ -107,27 +107,32 @@ describe('CI Notification Worker', () => {
       });
     };
 
-    it('should return 403 for unauthorized owner when ALLOWED_OWNER is set', async () => {
-      const payload = {
-        action: 'completed',
-        workflow_run: {
-          conclusion: 'failure',
-          name: 'CI',
-          head_branch: 'main',
-          head_sha: 'abc123',
-          head_commit: { message: 'test commit', author: { name: 'test' } },
-          html_url: 'https://github.com/unauthorized/repo/actions/runs/1',
-        },
-        repository: {
-          full_name: 'unauthorized/repo',
-          owner: { login: 'unauthorized' },
-        },
-      };
-      const body = JSON.stringify(payload);
-      const env = createEnv({ ALLOWED_OWNER: 'allowed-user' });
+    const createOwnerPayload = (owner: string) => ({
+      action: 'completed',
+      workflow_run: {
+        conclusion: 'failure',
+        name: 'CI',
+        head_branch: 'main',
+        head_sha: 'abc123',
+        head_commit: { message: 'test commit', author: { name: 'test' } },
+        html_url: `https://github.com/${owner}/repo/actions/runs/1`,
+      },
+      repository: {
+        full_name: `${owner}/repo`,
+        owner: { login: owner },
+      },
+    });
+
+    const sendWebhook = async (owner: string, envOverrides?: Partial<ReturnType<typeof createEnv>>) => {
+      const body = JSON.stringify(createOwnerPayload(owner));
+      const env = createEnv(envOverrides);
       const request = await createSignedRequest(body, env.GITHUB_WEBHOOK_SECRET);
       const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+      return worker.fetch(request, env, ctx as ExecutionContext);
+    };
+
+    it('should return 403 for unauthorized owner when ALLOWED_OWNER is set', async () => {
+      const response = await sendWebhook('unauthorized', { ALLOWED_OWNER: 'allowed-user' });
 
       expect(response.status).toBe(403);
       const json = await response.json();
@@ -135,54 +140,34 @@ describe('CI Notification Worker', () => {
     });
 
     it('should allow request when owner matches ALLOWED_OWNER', async () => {
-      const payload = {
-        action: 'completed',
-        workflow_run: {
-          conclusion: 'failure',
-          name: 'CI',
-          head_branch: 'main',
-          head_sha: 'abc123',
-          head_commit: { message: 'test commit', author: { name: 'test' } },
-          html_url: 'https://github.com/allowed-user/repo/actions/runs/1',
-        },
-        repository: {
-          full_name: 'allowed-user/repo',
-          owner: { login: 'allowed-user' },
-        },
-      };
-      const body = JSON.stringify(payload);
-      const env = createEnv({ ALLOWED_OWNER: 'allowed-user' });
-      const request = await createSignedRequest(body, env.GITHUB_WEBHOOK_SECRET);
-      const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+      const response = await sendWebhook('allowed-user', { ALLOWED_OWNER: 'allowed-user' });
 
-      // Should not be 403 (owner is allowed)
       expect(response.status).not.toBe(403);
     });
 
-    it('should allow any owner when ALLOWED_OWNER is not set', async () => {
-      const payload = {
-        action: 'completed',
-        workflow_run: {
-          conclusion: 'failure',
-          name: 'CI',
-          head_branch: 'main',
-          head_sha: 'abc123',
-          head_commit: { message: 'test commit', author: { name: 'test' } },
-          html_url: 'https://github.com/any-user/repo/actions/runs/1',
-        },
-        repository: {
-          full_name: 'any-user/repo',
-          owner: { login: 'any-user' },
-        },
-      };
-      const body = JSON.stringify(payload);
-      const env = createEnv(); // No ALLOWED_OWNER
-      const request = await createSignedRequest(body, env.GITHUB_WEBHOOK_SECRET);
-      const ctx = createExecutionContext();
-      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+    it('should allow owner in comma-separated ALLOWED_OWNER list', async () => {
+      const response = await sendWebhook('org-name', { ALLOWED_OWNER: 'allowed-user,org-name' });
 
-      // Should not be 403 (no owner restriction)
+      expect(response.status).not.toBe(403);
+    });
+
+    it('should handle spaces in comma-separated ALLOWED_OWNER', async () => {
+      const response = await sendWebhook('org-name', { ALLOWED_OWNER: ' allowed-user , org-name ' });
+
+      expect(response.status).not.toBe(403);
+    });
+
+    it('should return 403 for owner not in comma-separated ALLOWED_OWNER list', async () => {
+      const response = await sendWebhook('intruder', { ALLOWED_OWNER: 'allowed-user,org-name' });
+
+      expect(response.status).toBe(403);
+      const json = await response.json();
+      expect(json).toHaveProperty('reason', 'unauthorized owner');
+    });
+
+    it('should allow any owner when ALLOWED_OWNER is not set', async () => {
+      const response = await sendWebhook('any-user');
+
       expect(response.status).not.toBe(403);
     });
   });

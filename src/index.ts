@@ -170,10 +170,13 @@ async function handleWebhook(
     // 3. ペイロード解析
     const payload = JSON.parse(body);
 
-    // 3.5. オーナー検証 (ALLOWED_OWNERが設定されている場合のみ)
+    // 3.5. オーナー検証 (ALLOWED_OWNERが設定されている場合のみ、カンマ区切り複数対応)
     if (env.ALLOWED_OWNER) {
+      const allowedOwners = new Set(
+        env.ALLOWED_OWNER.split(',').map(s => s.trim()).filter(Boolean)
+      );
       const owner = payload.repository?.owner?.login;
-      if (owner !== env.ALLOWED_OWNER) {
+      if (!owner || !allowedOwners.has(owner)) {
         return new Response(
           JSON.stringify({ status: 'ignored', reason: 'unauthorized owner' }),
           { status: 403, headers: { 'Content-Type': 'application/json' } }
