@@ -42,17 +42,19 @@ bun run deploy
 ```text
 src/
 ├── index.ts          # Workers エントリーポイント (fetch handler)
-├── types.ts          # 型定義 (Env, GitHubErrorInfo, Discord関連)
+├── types.ts          # 型定義 (Env, GitHubErrorInfo, WebhookSyncResult, Discord関連)
 ├── github.ts         # GitHub Webhook署名検証 & ペイロード解析
 ├── github-api.ts     # GitHub API (失敗job/step取得)
 ├── claude.ts         # Claude API統合 (ホロ口調変換)
 ├── discord.ts        # Discord Webhook送信
-└── history.ts        # Workers KV履歴管理
+├── history.ts        # Workers KV履歴管理
+└── webhook-sync.ts   # 全リポジトリWebhook一括同期 (GitHub API)
 
 test/
 ├── index.spec.ts     # テスト (unit style & integration style)
 ├── github.spec.ts    # GitHub Webhook解析テスト
 ├── github-api.spec.ts # GitHub API エラー取得テスト
+├── webhook-sync.spec.ts # Webhook同期テスト
 ├── env.d.ts          # cloudflare:test モジュール型拡張
 └── tsconfig.json     # テスト用TypeScript設定
 ```
@@ -78,18 +80,29 @@ Secretsはwrangler secret putで設定:
 - GITHUB_WEBHOOK_SECRET
 - ANTHROPIC_API_KEY
 - DISCORD_WEBHOOK_URL
-- GITHUB_TOKEN (オプション: 失敗job/step詳細取得用、Fine-grained PAT actions:read)
+- GITHUB_TOKEN (オプション: 失敗job/step詳細取得用 + Webhook同期用、Fine-grained PAT actions:read, administration:write)
+- NOTIFY_API_TOKEN (/api/notify, /api/sync-webhooks 認証用)
+- WEBHOOK_URL (オプション: Webhook同期先URL、例: https://workers.example.com/webhook)
 
 ### リクエストフロー (POST /webhook)
 
 1. GitHub Webhook受信
 2. 署名検証 (github.ts:verifyGitHubSignature)
 3. オーナー検証 (ALLOWED_OWNER設定時、カンマ区切り複数対応)
-4. ペイロード解析 (github.ts:parseWebhook)
-5. 失敗時: GitHub API で失敗job/step取得 (github-api.ts:fetchErrorSummary, GITHUB_TOKEN設定時のみ)
-6. 履歴読み込み (history.ts:loadHistory)
-7. ホロ口調変換 (claude.ts:convertToHolo, エラー詳細付き)
-8. Discord送信 + 履歴保存 (ctx.waitUntil)
+4. アーカイブ済みリポジトリはスキップ
+5. ペイロード解析 (github.ts:parseWebhook)
+6. 失敗時: GitHub API で失敗job/step取得 (github-api.ts:fetchErrorSummary, GITHUB_TOKEN設定時のみ)
+7. 履歴読み込み (history.ts:loadHistory)
+8. ホロ口調変換 (claude.ts:convertToHolo, エラー詳細付き)
+9. Discord送信 + 履歴保存 (ctx.waitUntil)
+
+### リクエストフロー (POST /api/sync-webhooks)
+
+1. Bearer token認証 (NOTIFY_API_TOKEN)
+2. GITHUB_TOKEN, WEBHOOK_URL 存在チェック
+3. 全リポジトリ取得 (GitHub API、ページネーション対応)
+4. 並列度5でWebhook同期 (作成/スキップ/アーカイブ済み削除)
+5. rate limit検出時は早期打ち切り、partial result返却
 
 ## Configuration Files
 
