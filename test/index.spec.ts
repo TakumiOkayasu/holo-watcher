@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import worker from '../src/index';
 
 describe('CI Notification Worker', () => {
+
+
   const createRequest = (url: string, options?: RequestInit) =>
     new Request(url, options);
 
@@ -26,6 +28,28 @@ describe('CI Notification Worker', () => {
     NOTIFY_API_TOKEN: 'test-notify-token',
     ...overrides,
   });
+
+  const createSignedRequest = async (body: string, secret: string) => {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+    const hexSignature = Array.from(new Uint8Array(signature))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    return createRequest('http://example.com/webhook', {
+      method: 'POST',
+      body,
+      headers: {
+        'X-Hub-Signature-256': `sha256=${hexSignature}`,
+      },
+    });
+  };
 
   describe('Health check', () => {
     it('should return 200 for / endpoint', async () => {
@@ -85,28 +109,6 @@ describe('CI Notification Worker', () => {
   });
 
   describe('Owner validation', () => {
-    const createSignedRequest = async (body: string, secret: string) => {
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(secret),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
-      const hexSignature = Array.from(new Uint8Array(signature))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-      return createRequest('http://example.com/webhook', {
-        method: 'POST',
-        body,
-        headers: {
-          'X-Hub-Signature-256': `sha256=${hexSignature}`,
-        },
-      });
-    };
-
     const createOwnerPayload = (owner: string) => ({
       action: 'completed',
       workflow_run: {
@@ -257,6 +259,140 @@ describe('CI Notification Worker', () => {
       const response = await worker.fetch(request, env, ctx as ExecutionContext);
 
       expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+    });
+  });
+
+  describe('Archived repository handling', () => {
+    it('should ignore webhooks from archived repositories', async () => {
+      const payload = {
+        action: 'completed',
+        workflow_run: {
+          conclusion: 'success',
+          name: 'CI',
+          head_branch: 'main',
+          head_sha: 'abc123',
+          head_commit: { message: 'test', author: { name: 'test' } },
+          html_url: 'https://github.com/owner/repo/actions/runs/1',
+        },
+        repository: {
+          full_name: 'owner/repo',
+          owner: { login: 'owner' },
+          archived: true,
+        },
+      };
+      const body = JSON.stringify(payload);
+      const env = createEnv();
+      const request = await createSignedRequest(body, env.GITHUB_WEBHOOK_SECRET);
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json).toHaveProperty('reason', 'archived repository');
+    });
+  });
+
+  describe('/api/sync-webhooks endpoint', () => {
+    it('should return 401 without Authorization header', async () => {
+      const request = createRequest('http://example.com/api/sync-webhooks', {
+        method: 'POST',
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 400 when GITHUB_TOKEN is missing', async () => {
+      const request = createRequest('http://example.com/api/sync-webhooks', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-notify-token' },
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv();
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json).toHaveProperty('message');
+    });
+
+    it('should return 400 when WEBHOOK_URL is missing', async () => {
+      const request = createRequest('http://example.com/api/sync-webhooks', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-notify-token' },
+      });
+      const ctx = createExecutionContext();
+      const env = createEnv({ GITHUB_TOKEN: 'ghp_test' });
+      const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json.message).toContain('WEBHOOK_URL');
+    });
+
+    it('should return 200 with sync results on success', async () => {
+      const WEBHOOK_URL = 'https://example.com/webhook';
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        const urlStr = url.toString();
+        if (urlStr.includes('/user/repos')) {
+          return new Response(JSON.stringify([{ full_name: 'owner/new-repo', archived: false }]), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (urlStr.includes('/repos/owner/new-repo/hooks')) {
+          if (init?.method === 'POST') {
+            return new Response(JSON.stringify({}), { status: 201 });
+          }
+          return new Response(JSON.stringify([]), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('Not found', { status: 404 });
+      }) as typeof fetch;
+
+      try {
+        const request = createRequest('http://example.com/api/sync-webhooks', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer test-notify-token' },
+        });
+        const ctx = createExecutionContext();
+        const env = createEnv({ GITHUB_TOKEN: 'ghp_test', WEBHOOK_URL });
+        const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+        expect(response.status).toBe(200);
+        const json = await response.json();
+        expect(json.status).toBe('success');
+        expect(json.created).toEqual(['owner/new-repo']);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('should return 500 when syncWebhooks throws unexpected error', async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () => {
+        return new Response('Internal Server Error', { status: 500 });
+      }) as typeof fetch;
+
+      try {
+        const request = createRequest('http://example.com/api/sync-webhooks', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer test-notify-token' },
+        });
+        const ctx = createExecutionContext();
+        const env = createEnv({ GITHUB_TOKEN: 'ghp_test', WEBHOOK_URL: 'https://example.com/webhook' });
+        const response = await worker.fetch(request, env, ctx as ExecutionContext);
+
+        expect(response.status).toBe(500);
+        const json = await response.json();
+        expect(json.status).toBe('error');
+        expect(json.message).toContain('Failed to fetch repos');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     });
   });
 });
