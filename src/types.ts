@@ -22,6 +22,9 @@ export interface Env {
 
   // /api/notify エンドポイント認証用トークン
   NOTIFY_API_TOKEN: string;
+
+  // Webhook同期先URL (例: https://workers.murata-lab.net/webhook)
+  WEBHOOK_URL?: string;
 }
 
 /**
@@ -61,6 +64,16 @@ export interface NotifyRequest {
   error_summary: string;
   has_fix_pr?: boolean;
   fix_pr_url?: string;
+}
+
+/**
+ * Webhook同期結果
+ */
+export interface WebhookSyncResult {
+  created: string[];
+  deleted: string[];
+  unchanged: string[];
+  errors: Array<{ repo: string; error: string }>;
 }
 
 /**

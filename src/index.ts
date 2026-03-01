@@ -6,6 +6,7 @@ import { sendToDiscord, sendErrorToDiscord } from './discord';
 import { buildApiErrorMessage } from './errors';
 import { loadHistory, saveHistory } from './history';
 import { fetchErrorSummary } from './github-api';
+import { syncWebhooks, type SyncConfig } from './webhook-sync';
 
 /**
  * Cloudflare Workers エントリーポイント
@@ -32,6 +33,10 @@ export default {
 
     if (url.pathname === '/api/notify' && request.method === 'POST') {
       return handleNotify(request, env, ctx);
+    }
+
+    if (url.pathname === '/api/sync-webhooks' && request.method === 'POST') {
+      return handleSyncWebhooks(request, env);
     }
 
     if (url.pathname === '/health' || url.pathname === '/') {
@@ -184,6 +189,14 @@ async function handleWebhook(
       }
     }
 
+    // 3.6. アーカイブ済みリポジトリはスキップ
+    if (payload.repository?.archived) {
+      return new Response(
+        JSON.stringify({ status: 'ignored', reason: 'archived repository' }),
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     const errorInfo = parseWebhook(payload);
 
     if (!errorInfo) {
@@ -254,6 +267,45 @@ async function handleWebhook(
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       }
+    );
+  }
+}
+
+/**
+ * /api/sync-webhooks 処理ハンドラー
+ */
+async function handleSyncWebhooks(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (!(await verifyBearerToken(authHeader, env.NOTIFY_API_TOKEN))) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    if (!env.GITHUB_TOKEN || !env.WEBHOOK_URL) {
+      return new Response(
+        JSON.stringify({ status: 'error', message: 'GITHUB_TOKEN and WEBHOOK_URL are required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const config: SyncConfig = {
+      token: env.GITHUB_TOKEN,
+      webhookUrl: env.WEBHOOK_URL,
+      webhookSecret: env.GITHUB_WEBHOOK_SECRET,
+    };
+    const result = await syncWebhooks(config);
+    return new Response(
+      JSON.stringify({ status: 'success', ...result }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Sync webhooks error:', error);
+    return new Response(
+      JSON.stringify({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }
