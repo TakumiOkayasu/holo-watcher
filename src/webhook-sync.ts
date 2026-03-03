@@ -4,7 +4,7 @@ const GITHUB_API = 'https://api.github.com';
 const MAX_PAGES = 50;
 const CONCURRENCY = 5;
 
-interface GitHubRepo {
+export interface GitHubRepo {
   full_name: string;
   archived: boolean;
 }
@@ -45,7 +45,7 @@ function githubHeaders(token: string): Record<string, string> {
 /**
  * 全ユーザーリポジトリ取得（ページネーション対応、上限付き）
  */
-async function fetchAllUserRepos(
+export async function fetchAllUserRepos(
   token: string,
   fetchFn: typeof fetch
 ): Promise<GitHubRepo[]> {

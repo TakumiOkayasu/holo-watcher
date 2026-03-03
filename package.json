@@ -7,7 +7,9 @@
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"test": "vitest",
-		"cf-typegen": "wrangler types"
+		"test:cli": "vitest run --config vitest.cli.config.mts",
+		"cf-typegen": "wrangler types",
+		"sync-webhooks": "bun run scripts/sync-webhooks.ts"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
