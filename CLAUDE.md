@@ -6,11 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cloudflare Workers上で動作するサーバーレスBot。GitHub Actions CIの結果(成功/失敗)を「狼と香辛料」のホロの口調でDiscordに送信する。
 
-- Runtime: Cloudflare Workers
-- Language: TypeScript (ES2024)
-- Package Manager: bun
-- Testing: Vitest with @cloudflare/vitest-pool-workers
-- Config: wrangler.jsonc (JSONC形式、TOMLではない)
+## Tech Stack
+
+| 項目 | 内容 |
+|------|------|
+| Runtime | Cloudflare Workers |
+| Language | TypeScript (ES2024) |
+| Package Manager | bun |
+| Testing | Vitest + @cloudflare/vitest-pool-workers |
+| Config | wrangler.jsonc (JSONC形式、TOMLではない) |
 
 ## Commands
 
@@ -36,6 +40,16 @@ bunx tsc --noEmit
 # デプロイ
 bun run deploy
 ```
+
+## 🚨 禁止事項
+
+| 禁止操作 | 理由 |
+|----------|------|
+| `crypto` (Node.js) の使用 | Cloudflare WorkersはNode.js cryptoを未サポート。必ず `crypto.subtle` (Web Crypto API) を使用すること |
+| `npm` / `yarn` の使用 | パッケージマネージャーは `bun` に統一すること |
+| `wrangler.toml` の作成 | 設定ファイルは `wrangler.jsonc` のみ使用すること |
+| Secretsのハードコード | 全Secretsは `wrangler secret put` で設定すること。コードへの直書き禁止 |
+| 型チェックエラーの放置 | `bunx tsc --noEmit` がパスしない状態でのコミット禁止 |
 
 ## Architecture
 
@@ -63,50 +77,60 @@ test/
 
 ### Cloudflare Workers固有
 
-- Node.js crypto は使用不可。Web Crypto API (`crypto.subtle`) を使用
-- KVNamespaceはEnv経由でバインド
-- ExecutionContext.waitUntil() で非同期処理を登録 (レスポンス返却後も継続)
+- Node.js crypto は使用不可。Web Crypto API (`crypto.subtle`) を使用すること（**必須**）
+- KVNamespaceはEnv経由でバインドすること
+- `ExecutionContext.waitUntil()` で非同期処理を登録すること（レスポンス返却後も継続）
 
 ### テスト
 
 - `cloudflare:test` からインポート (`env`, `createExecutionContext`, `SELF`)
-- Unit style: worker.fetch() を直接呼び出し
-- Integration style: SELF.fetch() でWorkers環境統合テスト
+- Unit style: `worker.fetch()` を直接呼び出し
+- Integration style: `SELF.fetch()` でWorkers環境統合テスト
+- テスト追加・変更時は必ず `bun test` で全テストがパスすることを確認すること
 
 ### 環境変数
 
-Secretsはwrangler secret putで設定:
+Secretsは `wrangler secret put` で設定すること（コードへの直書き禁止）:
 
-- GITHUB_WEBHOOK_SECRET
-- ANTHROPIC_API_KEY
-- DISCORD_WEBHOOK_URL
-- GITHUB_TOKEN (オプション: 失敗job/step詳細取得用 + Webhook同期用、Fine-grained PAT actions:read, administration:write)
-- NOTIFY_API_TOKEN (/api/notify, /api/sync-webhooks 認証用)
-- WEBHOOK_URL (オプション: Webhook同期先URL、例: https://workers.example.com/webhook)
+| 変数名 | 必須 | 用途 |
+|--------|------|------|
+| `GITHUB_WEBHOOK_SECRET` | ✅ | Webhook署名検証 |
+| `ANTHROPIC_API_KEY` | ✅ | Claude API (ホロ口調変換) |
+| `DISCORD_WEBHOOK_URL` | ✅ | Discord送信先 |
+| `NOTIFY_API_TOKEN` | ✅ | `/api/notify`, `/api/sync-webhooks` 認証 |
+| `GITHUB_TOKEN` | ⚠️ オプション | 失敗job/step詳細取得 + Webhook同期。Fine-grained PAT: `actions:read`, `administration:write` |
+| `WEBHOOK_URL` | ⚠️ オプション | Webhook同期先URL (例: `https://workers.example.com/webhook`) |
 
 ### リクエストフロー (POST /webhook)
 
 1. GitHub Webhook受信
-2. 署名検証 (github.ts:verifyGitHubSignature)
-3. オーナー検証 (ALLOWED_OWNER設定時、カンマ区切り複数対応)
+2. 署名検証 (`github.ts:verifyGitHubSignature`)
+3. オーナー検証 (`ALLOWED_OWNER`設定時、カンマ区切り複数対応)
 4. アーカイブ済みリポジトリはスキップ
-5. ペイロード解析 (github.ts:parseWebhook)
-6. 失敗時: GitHub API で失敗job/step取得 (github-api.ts:fetchErrorSummary, GITHUB_TOKEN設定時のみ)
-7. 履歴読み込み (history.ts:loadHistory)
-8. ホロ口調変換 (claude.ts:convertToHolo, エラー詳細付き)
-9. Discord送信 + 履歴保存 (ctx.waitUntil)
+5. ペイロード解析 (`github.ts:parseWebhook`)
+6. 失敗時: GitHub API で失敗job/step取得 (`github-api.ts:fetchErrorSummary`、`GITHUB_TOKEN`設定時のみ)
+7. 履歴読み込み (`history.ts:loadHistory`)
+8. ホロ口調変換 (`claude.ts:convertToHolo`、エラー詳細付き)
+9. Discord送信 + 履歴保存 (`ctx.waitUntil`)
 
 ### リクエストフロー (POST /api/sync-webhooks)
 
-1. Bearer token認証 (NOTIFY_API_TOKEN)
-2. GITHUB_TOKEN, WEBHOOK_URL 存在チェック
+1. Bearer token認証 (`NOTIFY_API_TOKEN`)
+2. `GITHUB_TOKEN`, `WEBHOOK_URL` 存在チェック
 3. 全リポジトリ取得 (GitHub API、ページネーション対応)
 4. 並列度5でWebhook同期 (作成/スキップ/アーカイブ済み削除)
 5. rate limit検出時は早期打ち切り、partial result返却
 
 ## Configuration Files
 
-- `wrangler.jsonc`: Workers設定 (main, compatibility_date, kv_namespaces)
-  - KV namespace ID設定が必要: `wrangler kv namespace create NOTIFICATION_HISTORY`で作成後、IDをwrangler.jsonc:16に記載
-- `vitest.config.mts`: Vitest設定 (@cloudflare/vitest-pool-workers使用)
-- `tsconfig.json`: strict: true, target: es2024, moduleResolution: Bundler
+- `wrangler.jsonc`: Workers設定 (`main`, `compatibility_date`, `kv_namespaces`)
+  - KV namespace ID設定が必要: `wrangler kv namespace create NOTIFICATION_HISTORY` で作成後、IDを `wrangler.jsonc:16` に記載
+- `vitest.config.mts`: Vitest設定 (`@cloudflare/vitest-pool-workers`使用)
+- `tsconfig.json`: `strict: true`, `target: es2024`, `moduleResolution: Bundler`
+
+## ✅ 変更前チェックリスト
+
+- [ ] `bunx tsc --noEmit` がエラーゼロ
+- [ ] `bun test` が全件パス
+- [ ] Secretsがコードにハードコードされていない
+- [ ] Node.js固有APIを使用していない (`crypto`, `fs` 等)
