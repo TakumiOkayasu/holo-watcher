@@ -103,8 +103,9 @@ bun run cf-typegen
 | コマンド | 説明 |
 | ---------- | ------ |
 | `bun run dev` | 開発サーバー起動 |
-| `bun test` | テスト実行 |
-| `bun test --watch` | watch モード |
+| `bun run test -- --run` | Workers向けVitest実行 |
+| `bun run test:cli` | CLI向けVitest実行 |
+| `bun run test -- --watch` | watch モード |
 | `bunx tsc --noEmit` | 型チェック |
 | `bun run deploy` | デプロイ |
 

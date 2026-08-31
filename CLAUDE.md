@@ -23,13 +23,16 @@ Cloudflare Workers上で動作するサーバーレスBot。GitHub Actions CIの
 bun run dev
 
 # テスト実行
-bun test
+bun run test -- --run
+
+# CLIテスト実行
+bun run test:cli
 
 # watchモード
-bun test --watch
+bun run test -- --watch
 
 # 単一テストファイル実行
-bun test test/index.spec.ts
+bun run test -- --run test/index.spec.ts
 
 # 型生成 (Env型をworker-configuration.d.tsに生成)
 bun run cf-typegen
@@ -86,7 +89,7 @@ test/
 - `cloudflare:test` からインポート (`env`, `createExecutionContext`, `SELF`)
 - Unit style: `worker.fetch()` を直接呼び出し
 - Integration style: `SELF.fetch()` でWorkers環境統合テスト
-- テスト追加・変更時は必ず `bun test` で全テストがパスすることを確認すること
+- テスト追加・変更時は必ず `bun run test -- --run` と `bun run test:cli` で全テストがパスすることを確認すること
 
 ### 環境変数
 
@@ -131,6 +134,6 @@ Secretsは `wrangler secret put` で設定すること（コードへの直書�
 ## ✅ 変更前チェックリスト
 
 - [ ] `bunx tsc --noEmit` がエラーゼロ
-- [ ] `bun test` が全件パス
+- [ ] `bun run test -- --run` と `bun run test:cli` が全件パス
 - [ ] Secretsがコードにハードコードされていない
 - [ ] Node.js固有APIを使用していない (`crypto`, `fs` 等)
