@@ -147,6 +147,31 @@ describe('Discord interactions security contract', () => {
     });
   });
 
+  it('fails closed when either allowlist binding is unset', async () => {
+    const signer = await createInteractionSigner();
+    const body = JSON.stringify({
+      type: 2,
+      guild_id: 'allowed-guild',
+      member: { user: { id: 'allowed-user' } },
+      data: { name: 'alive' },
+    });
+
+    for (const overrides of [
+      { DISCORD_ALLOWED_GUILD_IDS: undefined },
+      { DISCORD_ALLOWED_USER_IDS: undefined },
+    ]) {
+      const response = await worker.fetch(
+        await signedInteraction(body, signer),
+        createEnv({ DISCORD_PUBLIC_KEY: signer.publicKeyHex, ...overrides }),
+        createContext(),
+      );
+      await expect(response.json()).resolves.toEqual({
+        type: 4,
+        data: expect.objectContaining({ flags: 64 }),
+      });
+    }
+  });
+
   it('rejects DM interactions and unknown commands ephemerally', async () => {
     const signer = await createInteractionSigner();
     const dmBody = JSON.stringify({
