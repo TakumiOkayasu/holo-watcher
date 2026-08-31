@@ -101,8 +101,8 @@ ${errorSummary ? `【エラー詳細】\n${errorSummary.substring(0, 800)}\n\n` 
   });
 
   // レスポンス抽出
-  //const result = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
-  const result = '';
+  const firstContent = response.content[0];
+  const result = firstContent?.type === 'text' ? firstContent.text.trim() : '';
 
   // 履歴更新(引数の配列を直接変更)
   history.push(selectedTone);
