@@ -25,6 +25,19 @@ export interface Env {
 
   // Webhook同期先URL (例: https://workers.murata-lab.net/webhook)
   WEBHOOK_URL?: string;
+
+  // Discord Interactions のEd25519公開鍵
+  DISCORD_PUBLIC_KEY: string;
+
+  // Interaction original response編集に使うApplication ID
+  DISCORD_APPLICATION_ID: string;
+
+  // `/alive` を許可するDiscord guild/user ID (カンマ区切り)
+  DISCORD_ALLOWED_GUILD_IDS: string;
+  DISCORD_ALLOWED_USER_IDS: string;
+
+  // Vaultwarden公開経路のhealth endpoint
+  VAULTWARDEN_HEALTH_URL: string;
 }
 
 /**
