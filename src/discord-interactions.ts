@@ -57,8 +57,11 @@ export interface DiscordInteraction {
   data?: { name?: string };
 }
 
-export function isAllowedId(id: string | undefined, allowlist: string): boolean {
-  if (!id) {
+export function isAllowedId(
+  id: string | undefined,
+  allowlist: string | undefined,
+): boolean {
+  if (!id || !allowlist) {
     return false;
   }
   return allowlist.split(',').some(candidate => candidate.trim() === id);
@@ -66,8 +69,8 @@ export function isAllowedId(id: string | undefined, allowlist: string): boolean 
 
 export function isAllowedDiscordInteraction(
   interaction: DiscordInteraction,
-  allowedGuildIds: string,
-  allowedUserIds: string,
+  allowedGuildIds: string | undefined,
+  allowedUserIds: string | undefined,
 ): boolean {
   return isAllowedId(interaction.guild_id, allowedGuildIds)
     && isAllowedId(interaction.member?.user?.id ?? interaction.user?.id, allowedUserIds);

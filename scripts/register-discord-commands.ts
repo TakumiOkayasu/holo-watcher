@@ -37,19 +37,17 @@ export async function registerCommands(
   const response = await fetchFn(
     `https://discord.com/api/v10/applications/${encodeURIComponent(config.applicationId)}/guilds/${encodeURIComponent(config.guildId)}/commands`,
     {
-      method: 'PUT',
+      method: 'POST',
       headers: {
         Authorization: `Bot ${config.botToken}`,
         'Content-Type': 'application/json; charset=utf-8',
       },
-      body: JSON.stringify([
-        {
-          name: 'alive',
-          description: 'Vaultwardenの公開経路を確認します',
-          type: 1,
-          default_member_permissions: '0',
-        },
-      ]),
+      body: JSON.stringify({
+        name: 'alive',
+        description: 'Vaultwardenの公開経路を確認します',
+        type: 1,
+        default_member_permissions: '0',
+      }),
     },
   );
 
