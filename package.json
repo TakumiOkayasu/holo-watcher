@@ -9,7 +9,8 @@
 		"test": "vitest",
 		"test:cli": "vitest run --config vitest.cli.config.mts",
 		"cf-typegen": "wrangler types",
-		"sync-webhooks": "bun run scripts/sync-webhooks.ts"
+		"sync-webhooks": "bun run scripts/sync-webhooks.ts",
+		"register-discord-commands": "bun run scripts/register-discord-commands.ts"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",

@@ -7,6 +7,14 @@ import { buildApiErrorMessage } from './errors';
 import { loadHistory, saveHistory } from './history';
 import { fetchErrorSummary } from './github-api';
 import { syncWebhooks, type SyncConfig } from './webhook-sync';
+import {
+  discordJson,
+  ephemeralMessage,
+  isAllowedDiscordInteraction,
+  verifyDiscordSignature,
+  type DiscordInteraction,
+} from './discord-interactions';
+import { checkPublicHealth, formatHealthResult } from './health';
 
 /**
  * Cloudflare Workers エントリーポイント
@@ -39,6 +47,10 @@ export default {
       return handleSyncWebhooks(request, env);
     }
 
+    if (url.pathname === '/discord/interactions' && request.method === 'POST') {
+      return handleDiscordInteraction(request, env, ctx);
+    }
+
     if (url.pathname === '/health' || url.pathname === '/') {
       return new Response(
         JSON.stringify({
@@ -55,6 +67,89 @@ export default {
     return new Response('Not Found', { status: 404 });
   },
 };
+
+async function handleDiscordInteraction(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const signature = request.headers.get('X-Signature-Ed25519');
+  const timestamp = request.headers.get('X-Signature-Timestamp');
+  if (!signature || !timestamp) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  // JSONへparseする前の同一bodyを署名検証へ渡す。
+  const rawBody = await request.text();
+  if (!(await verifyDiscordSignature(signature, timestamp, rawBody, env.DISCORD_PUBLIC_KEY))) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  let interaction: DiscordInteraction;
+  try {
+    interaction = JSON.parse(rawBody) as DiscordInteraction;
+  } catch {
+    return new Response('Bad Request', { status: 400 });
+  }
+
+  if (interaction.type === 1) {
+    return discordJson({ type: 1 });
+  }
+
+  if (interaction.type !== 2) {
+    return ephemeralMessage('このInteraction種別には対応していません。');
+  }
+
+  // guild_idのないDMと、未許可guild/userはすべてdenyする。
+  if (!interaction.guild_id || !isAllowedDiscordInteraction(
+    interaction,
+    env.DISCORD_ALLOWED_GUILD_IDS,
+    env.DISCORD_ALLOWED_USER_IDS,
+  )) {
+    return ephemeralMessage('このコマンドを使用する権限がありません。');
+  }
+
+  if (interaction.data?.name !== 'alive') {
+    return ephemeralMessage('不明なコマンドです。');
+  }
+
+  if (!interaction.token || !env.DISCORD_APPLICATION_ID || !env.VAULTWARDEN_HEALTH_URL) {
+    return ephemeralMessage('このコマンドは現在利用できません。');
+  }
+
+  // Discordの3秒制約に合わせ、外部health確認はdefer後に継続する。
+  ctx.waitUntil(
+    completeAliveInteraction(
+      interaction.token,
+      env.DISCORD_APPLICATION_ID,
+      env.VAULTWARDEN_HEALTH_URL,
+    ).catch(() => console.error('Discord alive interaction follow-up failed')),
+  );
+  return discordJson({ type: 5, data: { flags: 64 } });
+}
+
+async function completeAliveInteraction(
+  interactionToken: string,
+  applicationId: string,
+  healthUrl: string,
+): Promise<void> {
+  const result = await checkPublicHealth(healthUrl);
+  const response = await fetch(
+    `https://discord.com/api/v10/webhooks/${encodeURIComponent(applicationId)}/${encodeURIComponent(interactionToken)}/messages/@original`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        content: formatHealthResult(result),
+        allowed_mentions: { parse: [] },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Discord interaction response edit failed: ${response.status}`);
+  }
+}
 
 /**
  * /api/notify 処理ハンドラー (CI失敗詳細通知)
