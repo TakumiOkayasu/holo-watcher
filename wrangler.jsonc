@@ -5,6 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "holo-ci-workers",
+	"account_id": "8061952fe7d2d9e2a440fddc7e332104",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-27",
 	"observability": {
