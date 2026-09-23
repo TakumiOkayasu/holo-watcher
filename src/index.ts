@@ -7,6 +7,7 @@ import { buildApiErrorMessage } from './errors';
 import { loadHistory, saveHistory } from './history';
 import { fetchErrorSummary } from './github-api';
 import { syncWebhooks, type SyncConfig } from './webhook-sync';
+import { parseAutomationNotice, deliverAutomationNotice } from './automation-notifications';
 import {
   discordJson,
   ephemeralMessage,
@@ -290,6 +291,31 @@ async function handleWebhook(
         JSON.stringify({ status: 'ignored', reason: 'archived repository' }),
         { headers: { 'Content-Type': 'application/json' } }
       );
+    }
+
+    // CI以外も、同じ署名・owner・archive検証を通過したものだけを扱う。
+    const event = request.headers.get('X-GitHub-Event');
+    if (event === 'pull_request' || event === 'issues') {
+      const notice = parseAutomationNotice(event, payload, env.NOTIFY_GITHUB_LOGIN);
+      if (!notice) {
+        return new Response(
+          JSON.stringify({ status: 'ignored', reason: 'not an extra notification' }),
+          { headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      try {
+        // Discordの応答を確認してから成功を返し、失敗をsentとして記録しない。
+        const status = await deliverAutomationNotice(notice, env.HOLO_HISTORY, env.DISCORD_WEBHOOK_URL);
+        return new Response(JSON.stringify({ status }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch {
+        console.error('Automation notification failed');
+        return new Response(
+          JSON.stringify({ status: 'error', message: 'Automation notification failed' }),
+          { status: 502, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
     }
 
     const errorInfo = parseWebhook(payload);
