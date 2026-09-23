@@ -20,6 +20,9 @@ export interface Env {
   // 許可するGitHubアカウント/Organization名 (カンマ区切りで複数指定可、オプション)
   ALLOWED_OWNER?: string;
 
+  // Bot作成PR/issueの追加通知を有効にする受信者login (未設定時は無効)
+  NOTIFY_GITHUB_LOGIN?: string;
+
   // /api/notify エンドポイント認証用トークン
   NOTIFY_API_TOKEN: string;
 
