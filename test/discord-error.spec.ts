@@ -25,7 +25,7 @@ describe('sendErrorToDiscord', () => {
     const payload = JSON.parse(options.body);
     const embed = payload.embeds[0];
     expect(embed.color).toBe(0xfee75c);
-    expect(embed.title).toBe('⚠️ Claude API エラー');
+    expect(embed.title).toBe('⚠️ テキスト生成API エラー');
   });
 
   it('should include CI info fields when errorInfo is provided', async () => {

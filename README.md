@@ -5,7 +5,7 @@ Cloudflare Workers 上で動作する CI 通知ボット。GitHub Actions の結
 ## Features
 
 - GitHub Webhook 全 conclusion 対応 (success / failure / cancelled / skipped / timed_out / stale / action_required)
-- Claude API によるホロ口調変換 (8パターン循環、KV で重複回避)
+- テキスト生成インターフェースによるホロ口調変換 (8パターン循環、KV で重複回避)
 - Discord Rich Embed 送信
 - GitHub API で失敗 job/step ログ自動取得
 - `/api/notify` 手動通知エンドポイント (Bearer Token 認証)
@@ -71,7 +71,8 @@ bun run cf-typegen
 | 変数名 | 必須 | 説明 |
 | -------- | ------ | ------ |
 | `GITHUB_WEBHOOK_SECRET` | Yes | GitHub Webhook 署名検証用 Secret |
-| `ANTHROPIC_API_KEY` | Yes | Claude API キー |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic adapter用APIキー |
+| `AI_MODEL` | Yes | 使用モデルID (既定値なし) |
 | `DISCORD_WEBHOOK_URL` | Yes | Discord Webhook URL |
 | `NOTIFY_API_TOKEN` | Yes | `/api/notify`, `/api/sync-webhooks` 認証用 Bearer Token |
 | `GITHUB_TOKEN` | No | 失敗 job/step 詳細取得 + Webhook 同期用 (Fine-grained PAT, actions:read, administration:write) |
@@ -117,7 +118,10 @@ src/
 ├── types.ts       # 型定義 (Env, GitHubErrorInfo, WebhookSyncResult, Discord 関連)
 ├── github.ts      # GitHub Webhook 署名検証 & ペイロード解析
 ├── github-api.ts  # GitHub API (失敗 job/step 取得)
-├── claude.ts      # Claude API 統合 (ホロ口調変換)
+├── holo.ts        # ホロ口調・プロンプト・履歴更新
+├── text-generation.ts # テキスト生成契約と共通エラー
+├── ai.ts          # プロバイダー構成
+├── providers/anthropic.ts # Anthropic SDK adapter
 ├── discord.ts     # Discord Webhook 送信
 ├── discord-interactions.ts # Discord Interactions署名検証・認可
 ├── health.ts      # Vaultwarden公開health確認
@@ -134,7 +138,7 @@ src/
 5. ペイロード解析 → `GitHubErrorInfo` 抽出
 6. 失敗時: GitHub API で失敗 job/step 取得 (`GITHUB_TOKEN` 設定時)
 7. KV から口調履歴読み込み
-8. Claude API でホロ口調変換 (エラー詳細付き)
+8. プロバイダー非依存のホロ口調変換 (エラー詳細付き)
 9. Discord Embed 送信 + 履歴保存 (`waitUntil`)
 
 ### Request Flow (POST /api/sync-webhooks)
@@ -152,3 +156,23 @@ src/
 3. guild/user allowlistと`/alive` commandを確認。DM、未許可、未知commandはephemeralに拒否
 4. `/alive`には3秒制約内でdeferred ephemeral ACK (`type: 5`) を返却
 5. `waitUntil`でVaultwardenの公開health endpointだけを確認し、original responseを編集
+
+## テキスト生成の差し替え
+
+`holo.ts` は `TextGenerator.generate(prompt): Promise<string>` のみに依存します。
+口調・プロンプト・履歴更新はここで扱い、SDK、認証、モデル指定、レスポンス抽出は
+`providers/anthropic.ts` に閉じ込めています。Discordの固定フィールドとURLは引き続きGitHubの元データから生成します。
+生成失敗時は従来のエラー通知を使い、空の生成結果でも履歴を進めません。
+
+別プロバイダーへ変更する場合は同じ契約を満たすadapterを作り、`ai.ts` の構成を差し替えます。
+SDKエラーは `TextGenerationError` に変換します。通知処理やホロ口調のテストをSDKに依存させる必要はありません。
+現在同梱する実装はAnthropicのみで、プロバイダーの自動切り替えはありません。
+
+### 移行時の設定
+
+デプロイ前に利用するモデルを選び、`AI_MODEL` をWorkerの設定に追加してください
+(例: `wrangler.jsonc` の `vars`、ローカルでは `.dev.vars`)。
+旧モデルIDへの暗黙のフォールバックはありません。未設定なら外部AIへ送信せず、従来のエラー通知経路に進みます。
+`ANTHROPIC_API_KEY` は引き続きAnthropic adapter用Secretです。
+出力上限600tokens、temperature=0.8は既存実装の値を同adapter内で維持します。
+別モデルへの適合性・品質・料金は別途確認が必要です。このリファクタリング自体は本番設定を変更しません。

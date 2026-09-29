@@ -59,7 +59,7 @@ export async function sendToDiscord(
 }
 
 /**
- * Claude APIエラーをDiscordに通知
+ * テキスト生成APIエラーをDiscordに通知
  */
 export async function sendErrorToDiscord(
   errorMessage: string,
@@ -80,7 +80,7 @@ export async function sendErrorToDiscord(
     username: 'CI結果を教えてくれるホロ',
     embeds: [
       {
-        title: '⚠️ Claude API エラー',
+        title: '⚠️ テキスト生成API エラー',
         description: errorMessage,
         color: 0xfee75c,
         fields,

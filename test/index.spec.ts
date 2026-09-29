@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import worker from '../src/index';
+
+vi.mock('../src/ai', () => ({
+  createTextGenerator: () => ({ generate: async () => 'Test notification' }),
+}));
+vi.mock('../src/discord', () => ({
+  sendToDiscord: vi.fn(async () => {}),
+  sendErrorToDiscord: vi.fn(async () => {}),
+}));
 
 describe('CI Notification Worker', () => {
 

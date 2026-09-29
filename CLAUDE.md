@@ -62,7 +62,10 @@ src/
 ├── types.ts          # 型定義 (Env, GitHubErrorInfo, WebhookSyncResult, Discord関連)
 ├── github.ts         # GitHub Webhook署名検証 & ペイロード解析
 ├── github-api.ts     # GitHub API (失敗job/step取得)
-├── claude.ts         # Claude API統合 (ホロ口調変換)
+├── holo.ts           # ホロ口調・プロンプト・履歴更新
+├── text-generation.ts # テキスト生成契約と共通エラー
+├── ai.ts             # プロバイダー構成
+├── providers/anthropic.ts # Anthropic SDK adapter
 ├── discord.ts        # Discord Webhook送信
 ├── history.ts        # Workers KV履歴管理
 └── webhook-sync.ts   # 全リポジトリWebhook一括同期 (GitHub API)
@@ -98,7 +101,8 @@ Secretsは `wrangler secret put` で設定すること（コードへの直書�
 | 変数名 | 必須 | 用途 |
 |--------|------|------|
 | `GITHUB_WEBHOOK_SECRET` | ✅ | Webhook署名検証 |
-| `ANTHROPIC_API_KEY` | ✅ | Claude API (ホロ口調変換) |
+| `ANTHROPIC_API_KEY` | ✅ | Anthropic adapter認証 |
+| `AI_MODEL` | ✅ | 使用モデルID (既定値なし、通常のWorker変数) |
 | `DISCORD_WEBHOOK_URL` | ✅ | Discord送信先 |
 | `NOTIFY_API_TOKEN` | ✅ | `/api/notify`, `/api/sync-webhooks` 認証 |
 | `GITHUB_TOKEN` | ⚠️ オプション | 失敗job/step詳細取得 + Webhook同期。Fine-grained PAT: `actions:read`, `administration:write` |
@@ -113,7 +117,7 @@ Secretsは `wrangler secret put` で設定すること（コードへの直書�
 5. ペイロード解析 (`github.ts:parseWebhook`)
 6. 失敗時: GitHub API で失敗job/step取得 (`github-api.ts:fetchErrorSummary`、`GITHUB_TOKEN`設定時のみ)
 7. 履歴読み込み (`history.ts:loadHistory`)
-8. ホロ口調変換 (`claude.ts:convertToHolo`、エラー詳細付き)
+8. ホロ口調変換 (`holo.ts:convertToHolo`、エラー詳細付き)
 9. Discord送信 + 履歴保存 (`ctx.waitUntil`)
 
 ### リクエストフロー (POST /api/sync-webhooks)
