@@ -1,21 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { convertToHolo } from '../src/claude';
+import { convertToHolo } from '../src/holo';
 import type { GitHubErrorInfo, WorkflowConclusion } from '../src/types';
 
-// モックの create 関数を外部から参照できるようにする
-const mockCreate = vi.fn().mockResolvedValue({
-  content: [{ type: 'text', text: 'わっちは嬉しいのじゃ！CIが成功したぞ！' }],
-});
+const mockGenerate = vi.fn();
+const generator = { generate: mockGenerate };
 
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: mockCreate },
-  })),
-}));
-
-describe('Claude API', () => {
-  const mockApiKey = 'test-api-key';
-
+describe('Holo notification wording', () => {
   const createErrorInfo = (conclusion: WorkflowConclusion): GitHubErrorInfo => ({
     repo: 'owner/repo',
     workflow: 'CI',
@@ -28,13 +18,14 @@ describe('Claude API', () => {
   });
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    mockGenerate.mockResolvedValue('わっちは嬉しいのじゃ！CIが成功したぞ！');
   });
 
   it('should generate message for successful CI', async () => {
     const info = createErrorInfo('success');
     const history: string[] = [];
-    const message = await convertToHolo(info, history, mockApiKey);
+    const message = await convertToHolo(info, history, generator);
 
     expect(message).toBe('わっちは嬉しいのじゃ！CIが成功したぞ！');
   });
@@ -42,7 +33,7 @@ describe('Claude API', () => {
   it('should generate message for failed CI', async () => {
     const info = createErrorInfo('failure');
     const history: string[] = [];
-    const message = await convertToHolo(info, history, mockApiKey);
+    const message = await convertToHolo(info, history, generator);
 
     expect(typeof message).toBe('string');
   });
@@ -50,7 +41,7 @@ describe('Claude API', () => {
   it('should update history after generation', async () => {
     const info = createErrorInfo('success');
     const history: string[] = [];
-    await convertToHolo(info, history, mockApiKey);
+    await convertToHolo(info, history, generator);
 
     expect(history.length).toBe(1);
   });
@@ -58,7 +49,7 @@ describe('Claude API', () => {
   it('should keep history max 5 items', async () => {
     const info = createErrorInfo('success');
     const history = ['1', '2', '3', '4', '5'];
-    await convertToHolo(info, history, mockApiKey);
+    await convertToHolo(info, history, generator);
 
     expect(history.length).toBe(5);
   });
@@ -66,10 +57,9 @@ describe('Claude API', () => {
   it('should include errorSummary in prompt when provided', async () => {
     const info = createErrorInfo('failure');
     const history: string[] = [];
-    await convertToHolo(info, history, mockApiKey, 'Error: test failed at line 42');
+    await convertToHolo(info, history, generator, 'Error: test failed at line 42');
 
-    const createCall = mockCreate.mock.calls[0][0];
-    const prompt = createCall.messages[0].content as string;
+    const prompt = mockGenerate.mock.calls[0][0] as string;
     expect(prompt).toContain('【エラー詳細】');
     expect(prompt).toContain('Error: test failed at line 42');
   });
@@ -77,20 +67,39 @@ describe('Claude API', () => {
   it('should not include error detail section without errorSummary', async () => {
     const info = createErrorInfo('failure');
     const history: string[] = [];
-    await convertToHolo(info, history, mockApiKey);
+    await convertToHolo(info, history, generator);
 
-    const createCall = mockCreate.mock.calls[0][0];
-    const prompt = createCall.messages[0].content as string;
+    const prompt = mockGenerate.mock.calls[0][0] as string;
     expect(prompt).not.toContain('【エラー詳細】');
   });
 
   it('should include CIキャンセル in prompt for cancelled conclusion', async () => {
     const info = createErrorInfo('cancelled');
     const history: string[] = [];
-    await convertToHolo(info, history, mockApiKey);
+    await convertToHolo(info, history, generator);
 
-    const createCall = mockCreate.mock.calls[0][0];
-    const prompt = createCall.messages[0].content as string;
+    const prompt = mockGenerate.mock.calls[0][0] as string;
     expect(prompt).toContain('CIキャンセル');
+  });
+  it('does not record a tone when generation fails', async () => {
+    const history = ['previous'];
+    mockGenerate.mockRejectedValue(new Error('failed'));
+    await expect(convertToHolo(createErrorInfo('failure'), history, generator)).rejects.toThrow('failed');
+    expect(history).toEqual(['previous']);
+  });
+
+  it('rejects empty output without changing history', async () => {
+    const history = ['previous'];
+    mockGenerate.mockResolvedValue('  ');
+    await expect(convertToHolo(createErrorInfo('success'), history, generator)).rejects.toThrow('Empty text response');
+    expect(history).toEqual(['previous']);
+  });
+
+  it('keeps the notification facts unchanged across provider substitution', async () => {
+    const info = createErrorInfo('failure');
+    const original = { ...info };
+    const alternative = { generate: async () => '  別の生成実装じゃ  ' };
+    expect(await convertToHolo(info, [], alternative)).toBe('別の生成実装じゃ');
+    expect(info).toEqual(original);
   });
 });

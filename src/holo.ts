@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { TextGenerationError, type TextGenerator } from './text-generation';
 import type { GitHubErrorInfo, WorkflowConclusion } from './types';
 
 /**
@@ -39,17 +39,15 @@ const CONCLUSION_PROMPT_HINT: Record<WorkflowConclusion, string> = {
  * CI結果情報をホロの口調に変換
  * @param errorInfo CI結果情報
  * @param history 最近使った口調の履歴(最大5件)
- * @param apiKey Anthropic API Key
+ * @param generator テキスト生成インターフェース
  * @returns ホロ口調のメッセージ
  */
 export async function convertToHolo(
   errorInfo: GitHubErrorInfo,
   history: string[],
-  apiKey: string,
+  generator: TextGenerator,
   errorSummary?: string
 ): Promise<string> {
-  const client = new Anthropic({ apiKey });
-
   // 最近使っていない口調を選択
   const availableTones = TONE_PATTERNS.filter((tone) => !history.includes(tone));
   const selectedTone =
@@ -92,17 +90,8 @@ ${errorSummary ? `【エラー詳細】\n${errorSummary.substring(0, 800)}\n\n` 
 
 【変換後】`;
 
-  // Claude API呼び出し
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 600,
-    temperature: 0.8, // 多様性を確保
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  // レスポンス抽出
-  const firstContent = response.content[0];
-  const result = firstContent?.type === 'text' ? firstContent.text.trim() : '';
+  const result = (await generator.generate(prompt)).trim();
+  if (!result) throw new TextGenerationError('Empty text response');
 
   // 履歴更新(引数の配列を直接変更)
   history.push(selectedTone);

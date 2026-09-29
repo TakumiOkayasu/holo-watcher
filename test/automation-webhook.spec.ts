@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createExecutionContext } from 'cloudflare:test';
 import worker from '../src/index';
 import type { Env } from '../src/types';
-import { convertToHolo } from '../src/claude';
+import { convertToHolo } from '../src/holo';
 
-vi.mock('../src/claude', () => ({ convertToHolo: vi.fn() }));
+vi.mock('../src/holo', () => ({ convertToHolo: vi.fn() }));
 
 afterEach(() => {
   vi.unstubAllGlobals();

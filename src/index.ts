@@ -1,7 +1,8 @@
 import type { Env, NotifyRequest, GitHubErrorInfo } from './types';
 import { verifyGitHubSignature, parseWebhook } from './github';
 import { verifyBearerToken } from './auth';
-import { convertToHolo } from './claude';
+import { convertToHolo } from './holo';
+import { createTextGenerator } from './ai';
 import { sendToDiscord, sendErrorToDiscord } from './discord';
 import { buildApiErrorMessage } from './errors';
 import { loadHistory, saveHistory } from './history';
@@ -208,10 +209,10 @@ async function handleNotify(
     const history = await loadHistory(env.HOLO_HISTORY);
     let holoMessage: string;
     try {
-      holoMessage = await convertToHolo(errorInfo, history, env.ANTHROPIC_API_KEY, errorSummary || undefined);
+      holoMessage = await convertToHolo(errorInfo, history, createTextGenerator(env), errorSummary || undefined);
     } catch (error) {
       const errorMessage = buildApiErrorMessage(error);
-      console.error('Claude API error:', errorMessage);
+      console.error('Text generation error:', errorMessage);
       ctx.waitUntil(
         sendErrorToDiscord(errorMessage, errorInfo, env.DISCORD_WEBHOOK_URL)
           .catch(e => console.error('Discord notification failed:', e))
@@ -341,10 +342,10 @@ async function handleWebhook(
     // 6. ホロ口調化
     let holoMessage: string;
     try {
-      holoMessage = await convertToHolo(errorInfo, history, env.ANTHROPIC_API_KEY, errorSummary);
+      holoMessage = await convertToHolo(errorInfo, history, createTextGenerator(env), errorSummary);
     } catch (error) {
       const errorMessage = buildApiErrorMessage(error);
-      console.error('Claude API error:', errorMessage);
+      console.error('Text generation error:', errorMessage);
       ctx.waitUntil(
         sendErrorToDiscord(errorMessage, errorInfo, env.DISCORD_WEBHOOK_URL)
           .catch(e => console.error('Discord notification failed:', e))

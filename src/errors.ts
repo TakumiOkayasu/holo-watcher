@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { TextGenerationError } from './text-generation';
 
 const STATUS_MESSAGES: Record<number, string> = {
   401: 'APIキーが無効です。設定を確認してください。',
@@ -8,9 +8,9 @@ const STATUS_MESSAGES: Record<number, string> = {
 };
 
 export function buildApiErrorMessage(error: unknown): string {
-  if (error instanceof Anthropic.APIError) {
-    return STATUS_MESSAGES[error.status ?? 0]
-      ?? `Claude APIエラー (HTTP ${error.status}): ${error.message}`;
+  if (error instanceof TextGenerationError && error.status !== undefined) {
+    return STATUS_MESSAGES[error.status]
+      ?? `テキスト生成APIエラー (HTTP ${error.status}): ${error.message}`;
   }
-  return `Claude APIエラー: ${error instanceof Error ? error.message : '不明なエラー'}`;
+  return `テキスト生成APIエラー: ${error instanceof Error ? error.message : '不明なエラー'}`;
 }

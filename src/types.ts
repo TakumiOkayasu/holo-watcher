@@ -8,6 +8,9 @@ export interface Env {
   // Anthropic API Key
   ANTHROPIC_API_KEY: string;
 
+  // Model selected for the configured text generation provider
+  AI_MODEL?: string;
+
   // Discord Webhook URL
   DISCORD_WEBHOOK_URL: string;
 
